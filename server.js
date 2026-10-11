@@ -1,6 +1,7 @@
 
 require("dotenv").config();
 
+const { Resend } = require("resend");
 const express = require("express");
 const mongoose = require("mongoose");
 const session = require("express-session");
@@ -8,7 +9,7 @@ const MongoStore = require("connect-mongo").default;
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const path = require("path");
-const nodemailer = require("nodemailer");
+
 
 const app = express();
 
@@ -22,23 +23,27 @@ if (!MONGODB_URI || !SESSION_SECRET) {
     process.exit(1);
 }
 
-// ==================================================
+ // ==================================================
 // EMAIL CONFIGURATION
 // ==================================================
 
+const resend = process.env.RESEND_API_KEY
+    ? new Resend(process.env.RESEND_API_KEY)
+    : null;
+
 const emailConfigured = Boolean(
-    process.env.SMTP_USER && process.env.SMTP_PASS
+    process.env.RESEND_API_KEY &&
+    process.env.EMAIL_FROM
 );
 
-const emailTransporter = emailConfigured
-    ? nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
-        }
-    })
-    : null;
+if (emailConfigured) {
+    console.log("Resend email configuration detected.");
+} else {
+    console.warn(
+        "Email notifications disabled: RESEND_API_KEY or EMAIL_FROM is missing."
+    );
+}
+
 
 // ==================================================
 // MIDDLEWARE
