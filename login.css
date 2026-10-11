@@ -1,0 +1,117 @@
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #061b35, #2864ee);
+    color: #172033;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 36px;
+    border-radius: 20px;
+    background: #ffffff;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.logo {
+    display: grid;
+    place-items: center;
+    width: 60px;
+    height: 60px;
+    margin-bottom: 18px;
+    border-radius: 16px;
+    background: #2864ee;
+    color: white;
+    font-size: 23px;
+    font-weight: bold;
+}
+
+.eyebrow {
+    color: #2864ee;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+h1 {
+    margin: 8px 0;
+    font-size: 30px;
+}
+
+.subtitle {
+    margin-bottom: 28px;
+    color: #657086;
+    line-height: 1.6;
+}
+
+label {
+    display: block;
+    margin: 16px 0 7px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+input {
+    width: 100%;
+    padding: 13px;
+    border: 1px solid #d5dce8;
+    border-radius: 9px;
+    font-size: 15px;
+}
+
+input:focus {
+    outline: 2px solid #2864ee;
+    border-color: transparent;
+}
+
+button {
+    width: 100%;
+    margin-top: 24px;
+    padding: 14px;
+    border: 0;
+    border-radius: 9px;
+    background: #2864ee;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #174ed0;
+}
+
+button:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+#message {
+    min-height: 20px;
+    color: #b42318;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.register-link {
+    margin-top: 22px;
+    text-align: center;
+    color: #657086;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+a {
+    color: #2864ee;
+}

@@ -1,0 +1,48 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Owner Login | Tap N Found</title>
+    <link rel="stylesheet" href="./login.css">
+    <script src="./login.js" defer></script>
+</head>
+<body>
+    <main class="login-card">
+        <div class="logo">TNF</div>
+        <p class="eyebrow">TAP N FOUND</p>
+        <h1>Welcome back</h1>
+        <p class="subtitle">Log in to view your items and finder conversations.</p>
+
+        <form id="loginForm">
+            <label for="email">Email address</label>
+            <input
+                id="email"
+                type="email"
+                autocomplete="username"
+                maxlength="254"
+                placeholder="you@example.com"
+                required
+            >
+
+            <label for="password">Password</label>
+            <input
+                id="password"
+                type="password"
+                autocomplete="current-password"
+                required
+            >
+
+            <button id="loginButton" type="submit">Log in</button>
+        </form>
+
+        <p id="message" role="status" aria-live="polite"></p>
+
+        <p class="register-link">
+            New to Tap N Found?
+            <a href="/home">Open the NFC page to create an account</a>
+        </p>
+    </main>
+</body>
+</html>

@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tap N Found | NFC Chat</title>
+    <link rel="stylesheet" href="./style.css">
+    <script src="./script.js" defer></script>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/">Tap N Found</a>
+        <span class="tagline">Tap. Find. Connect.</span>
+    </header>
+
+    <main class="container">
+        <section class="panel">
+            <p class="eyebrow">NFC LOST & FOUND</p>
+            <h1 id="pageTitle">Connecting...</h1>
+            <p id="tagInfo" class="muted">Checking this NFC tag...</p>
+            <p id="notice" role="status" aria-live="polite"></p>
+        </section>
+
+        <!-- Owner login and account creation -->
+        <section id="authSection" class="panel" hidden>
+            <h2>Owner access</h2>
+            <p class="muted">
+                Log in to manage your registered tag and reply to finders.
+                Email is used only as your login ID.
+            </p>
+
+            <div class="tabs">
+                <button id="showLogin" type="button" class="tab active">
+                    Log in
+                </button>
+                <button id="showSignup" type="button" class="tab">
+                    Create account
+                </button>
+            </div>
+
+            <form id="loginForm">
+                <label for="loginEmail">Email / username</label>
+                <input id="loginEmail" type="email" autocomplete="username"
+                    maxlength="254" required>
+
+                <label for="loginPassword">Password</label>
+                <input id="loginPassword" type="password"
+                    autocomplete="current-password" required>
+
+                <button class="primary" type="submit">Log in</button>
+            </form>
+
+            <form id="signupForm" hidden>
+                <label for="signupName">Your name</label>
+                <input id="signupName" maxlength="100" required>
+
+                <label for="signupEmail">Email address (login ID)</label>
+                <input id="signupEmail" type="email" maxlength="254"
+                    autocomplete="email" required>
+
+                <label for="signupPassword">Create password</label>
+                <input id="signupPassword" type="password"
+                    minlength="8" maxlength="72"
+                    autocomplete="new-password" required>
+
+                <button class="primary" type="submit">Create account</button>
+            </form>
+        </section>
+
+        <!-- Register an unused tag while logged in -->
+        <section id="registerTagSection" class="panel" hidden>
+            <h2>Register this NFC tag</h2>
+            <p class="muted">
+                This tag is not registered yet. Add the item to your account.
+            </p>
+
+            <form id="registerTagForm">
+                <label for="itemName">Item name</label>
+                <input id="itemName" maxlength="100"
+                    placeholder="Phone, bag, keys..." required>
+
+                <button class="primary" type="submit">
+                    Register tag
+                </button>
+            </form>
+        </section>
+
+        <!-- Owner interface -->
+        <section id="ownerSection" class="panel" hidden>
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">OWNER DASHBOARD</p>
+                    <h2>Finder conversations</h2>
+                </div>
+                <button id="logoutButton" class="secondary" type="button">
+                    Log out
+                </button>
+            </div>
+
+            <p id="ownerGreeting" class="muted"></p>
+            <div id="chatList" class="chat-list"></div>
+
+            <div id="ownerChatArea" hidden>
+                <h3 id="ownerChatTitle">Conversation</h3>
+                <div id="ownerMessages" class="messages"></div>
+
+                <form id="ownerMessageForm" class="message-form">
+                    <input id="ownerMessageInput"
+                        placeholder="Write a reply..."
+                        maxlength="1000" required>
+                    <button class="primary" type="submit">Send</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Finder interface -->
+        <section id="finderSection" class="panel" hidden>
+            <p class="eyebrow">FINDER CHAT</p>
+            <h2>Contact the owner</h2>
+            <p id="finderItemInfo" class="muted"></p>
+
+            <form id="finderStartForm">
+                <label for="finderName">Choose a nickname</label>
+                <input id="finderName" maxlength="50"
+                    placeholder="Your name or nickname" required>
+                <button class="primary" type="submit">
+                    Start chat
+                </button>
+            </form>
+
+            <div id="finderChatArea" hidden>
+                <h3>Chat with the owner</h3>
+                <p class="muted">
+                    Please don't share passwords, financial information,
+                    or other sensitive details in chat.
+                </p>
+                <div id="finderMessages" class="messages"></div>
+
+                <form id="finderMessageForm" class="message-form">
+                    <input id="finderMessageInput"
+                        placeholder="Write a message..."
+                        maxlength="1000" required>
+                    <button class="primary" type="submit">Send</button>
+                </form>
+            </div>
+        </section>
+
+        <section id="errorSection" class="panel" hidden>
+            <h2>Unable to open this tag</h2>
+            <p id="errorText"></p>
+        </section>
+    </main>
+
+    <footer>
+        Tap N Found · Help people reconnect with lost items
+    </footer>
+</body>
+</html>
