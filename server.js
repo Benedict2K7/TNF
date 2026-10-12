@@ -52,27 +52,47 @@ if (emailConfigured) {
 }
 
 async function sendNotification(to, subject, text) {
-    if (!transporter) {
-        console.warn("Email not sent: SMTP is not configured.");
-        return false;
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.EMAIL_FROM;
+
+    if (!apiKey || !from) {
+        throw new Error(
+            "Missing RESEND_API_KEY or EMAIL_FROM environment variable."
+        );
     }
 
-    try {
-        await transporter.sendMail({
-            from: process.env.SMTP_USER,
-            to,
+    const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            from,
+            to: [to],
             subject,
             text
-        });
+        })
+    });
 
-        console.log("Email notification sent successfully.");
-        return true;
-    } catch (error) {
-        console.error("Email sending failed:", error.message);
-        return false;
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        console.error(
+            "Email API error:",
+            response.status,
+            result
+        );
+
+        throw new Error(
+            result.message || "The email provider could not send the email."
+        );
     }
-}
 
+    console.log("Email accepted by provider:", result.id);
+
+    return result;
+}
 
 
 // ==================================================
