@@ -22,18 +22,20 @@ if (!MONGODB_URI || !SESSION_SECRET) {
     process.exit(1);
 }
 
+
 const nodemailer = require("nodemailer");
 
-// ==================================================
-// EMAIL CONFIGURATION — GMAIL SMTP
-// ==================================================
-
-const emailConfigured = Boolean(
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS
+const smtpConfigured = Boolean(
+    process.env.SMTP_USER && process.env.SMTP_PASS
 );
 
-const transporter = emailConfigured
+const resendConfigured = Boolean(
+    process.env.RESEND_API_KEY && process.env.EMAIL_FROM
+);
+
+const emailConfigured = smtpConfigured || resendConfigured;
+
+const transporter = smtpConfigured
     ? nodemailer.createTransport({
         service: "gmail",
         auth: {
@@ -43,55 +45,69 @@ const transporter = emailConfigured
     })
     : null;
 
-if (emailConfigured) {
+if (resendConfigured) {
+    console.log("Resend email configuration detected.");
+} else if (smtpConfigured) {
     console.log("Gmail SMTP email configuration detected.");
 } else {
-    console.warn(
-        "Email notifications disabled: SMTP_USER or SMTP_PASS is missing."
-    );
+    console.warn("Email notifications are not configured.");
 }
 
 async function sendNotification(to, subject, text) {
-    const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.EMAIL_FROM;
-
-    if (!apiKey || !from) {
-        throw new Error(
-            "Missing RESEND_API_KEY or EMAIL_FROM environment variable."
+    // Prefer Resend when its configuration is available.
+    if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
+        const response = await fetch(
+            "https://api.resend.com/emails",
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    from: process.env.EMAIL_FROM,
+                    to: [to],
+                    subject,
+                    text
+                })
+            }
         );
+
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            console.error(
+                "Resend API error:",
+                response.status,
+                result
+            );
+
+            throw new Error(
+                result.message ||
+                "The email provider could not send the email."
+            );
+        }
+
+        console.log("Email accepted by Resend:", result.id);
+        return result;
     }
 
-    const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            from,
-            to: [to],
+    // Gmail SMTP fallback for local testing.
+    if (transporter) {
+        const result = await transporter.sendMail({
+            from: process.env.SMTP_USER,
+            to,
             subject,
             text
-        })
-    });
+        });
 
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-        console.error(
-            "Email API error:",
-            response.status,
-            result
-        );
-
-        throw new Error(
-            result.message || "The email provider could not send the email."
-        );
+        console.log("Email accepted by Gmail SMTP:", result.messageId);
+        return result;
     }
 
-    console.log("Email accepted by provider:", result.id);
-
-    return result;
+    throw new Error(
+        "Email is not configured. Set RESEND_API_KEY and EMAIL_FROM."
+    );
 }
 
 
@@ -1225,8 +1241,9 @@ app.post("/api/chats/:chatId/messages", async (req, res) => {
         access.chat.lastMessageAt = new Date();
         await access.chat.save();
 
-        // Notify the owner when the finder sends the first message.
-        if (access.sender === "finder" && emailTransporter) {
+        
+        // Notify the owner when the finder starts a conversation.
+        if (access.sender === "finder") {
             try {
                 const tag = await NFC.findOne({
                     nfcId: access.chat.nfcId,
@@ -1234,8 +1251,7 @@ app.post("/api/chats/:chatId/messages", async (req, res) => {
                 });
 
                 if (tag && tag.email) {
-                    // Claim the notification so parallel messages
-                    // do not send duplicate emails for this chat.
+                    // Prevent duplicate notifications for this chat.
                     const claim = await Chat.updateOne(
                         {
                             _id: access.chat._id,
@@ -1250,12 +1266,10 @@ app.post("/api/chats/:chatId/messages", async (req, res) => {
 
                     if (claim.modifiedCount === 1) {
                         try {
-                            await emailTransporter.sendMail({
-                                from: process.env.SMTP_USER,
-                                to: tag.email,
-                                subject: "Your item was found!",
-                                text:
-`Hello ${tag.ownerName},
+                            await sendNotification(
+                                tag.email,
+                                "Your item was found!",
+                                `Hello ${tag.ownerName},
 
 Someone has started a conversation about your registered item on Tap N Found.
 
@@ -1268,16 +1282,14 @@ Login to Tap N Found:
 https://tnf-cqsa.onrender.com/
 
 Thank you,
-Tap N Found Team`,
-
-
-                            });
+Tap N Found Team`
+                            );
 
                             console.log(
                                 `Owner notification sent for NFC ${tag.nfcId}`
                             );
                         } catch (emailError) {
-                            // Reset so a later finder message can retry.
+                            // Allow a later attempt if sending fails.
                             await Chat.updateOne(
                                 {
                                     _id: access.chat._id,
@@ -1298,13 +1310,14 @@ Tap N Found Team`,
                     }
                 }
             } catch (emailError) {
-                // Email problems must not prevent chat from working.
+                // Email failure should not prevent chat messages.
                 console.error(
                     "Owner email notification error:",
                     emailError.message
                 );
             }
         }
+
 
         return res.status(201).json({
             message: {
@@ -1380,14 +1393,19 @@ async function startServer() {
 
     console.log("MongoDB connected successfully.");
 
+    // Create the administrator if the account is missing.
+    await ensureAdminAccount();
+
     if (!emailConfigured) {
         console.warn(
-            "Email notifications are disabled: SMTP_USER or SMTP_PASS is missing."
+            "Email notifications are not configured."
         );
     }
 
     app.listen(PORT, () => {
-        console.log(`Tap N Found server running on port ${PORT}`);
+        console.log(
+            `Tap N Found server running on port ${PORT}`
+        );
     });
 }
 
@@ -1395,23 +1413,3 @@ startServer().catch((error) => {
     console.error("Server startup failed:", error.message);
     process.exit(1);
 });
-
-
-mongoose.connect(process.env.MONGODB_URI)
-    .then(async () => {
-        console.log("MongoDB connected successfully.");
-
-        await ensureAdminAccount();
-
-        app.listen(process.env.PORT || 5000, () => {
-            console.log(
-                `Tap N Found server running on port ${
-                    process.env.PORT || 5000
-                }`
-            );
-        });
-    })
-    .catch((error) => {
-        console.error("Server startup failed:", error.message);
-        process.exit(1);
-    });
