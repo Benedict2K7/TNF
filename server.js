@@ -1,7 +1,6 @@
 
 require("dotenv").config();
 
-const { Resend } = require("resend");
 const express = require("express");
 const mongoose = require("mongoose");
 const session = require("express-session");
@@ -23,26 +22,57 @@ if (!MONGODB_URI || !SESSION_SECRET) {
     process.exit(1);
 }
 
- // ==================================================
-// EMAIL CONFIGURATION
+const nodemailer = require("nodemailer");
+
+// ==================================================
+// EMAIL CONFIGURATION — GMAIL SMTP
 // ==================================================
 
-const resend = process.env.RESEND_API_KEY
-    ? new Resend(process.env.RESEND_API_KEY)
-    : null;
-
 const emailConfigured = Boolean(
-    process.env.RESEND_API_KEY &&
-    process.env.EMAIL_FROM
+    process.env.SMTP_USER &&
+    process.env.SMTP_PASS
 );
 
+const transporter = emailConfigured
+    ? nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+        }
+    })
+    : null;
+
 if (emailConfigured) {
-    console.log("Resend email configuration detected.");
+    console.log("Gmail SMTP email configuration detected.");
 } else {
     console.warn(
-        "Email notifications disabled: RESEND_API_KEY or EMAIL_FROM is missing."
+        "Email notifications disabled: SMTP_USER or SMTP_PASS is missing."
     );
 }
+
+async function sendNotification(to, subject, text) {
+    if (!transporter) {
+        console.warn("Email not sent: SMTP is not configured.");
+        return false;
+    }
+
+    try {
+        await transporter.sendMail({
+            from: process.env.SMTP_USER,
+            to,
+            subject,
+            text
+        });
+
+        console.log("Email notification sent successfully.");
+        return true;
+    } catch (error) {
+        console.error("Email sending failed:", error.message);
+        return false;
+    }
+}
+
 
 
 // ==================================================
@@ -127,6 +157,68 @@ const adminSchema = new mongoose.Schema({
 });
 
 const Admin = mongoose.model("Admin", adminSchema);
+
+
+async function ensureAdminAccount() {
+    const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    const password = process.env.ADMIN_PASSWORD;
+    const name = process.env.ADMIN_NAME?.trim() || "Tap N Found Admin";
+
+    if (!email || !password) {
+        throw new Error(
+            "ADMIN_EMAIL and ADMIN_PASSWORD must be configured in .env"
+        );
+    }
+
+    const existingAdmin = await Admin.findOne({ email });
+
+    if (existingAdmin) {
+        console.log("Admin account already exists.");
+        return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    await Admin.create({
+        name,
+        email,
+        passwordHash
+    });
+
+    console.log("Initial admin account created successfully.");
+}
+
+async function ensureAdminAccount() {
+    const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    const password = process.env.ADMIN_PASSWORD;
+    const name = process.env.ADMIN_NAME?.trim() || "Tap N Found Admin";
+
+    if (!email || !password) {
+        throw new Error(
+            "ADMIN_EMAIL and ADMIN_PASSWORD must be set in .env"
+        );
+    }
+
+    // Check whether this administrator already exists
+    const existingAdmin = await Admin.findOne({ email });
+
+    if (existingAdmin) {
+        console.log("Admin account already exists.");
+        return;
+    }
+
+    // Hash the password before saving it
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    await Admin.create({
+        name,
+        email,
+        passwordHash
+    });
+
+    console.log("Initial admin account created successfully.");
+}
+
 
 const nfcSchema = new mongoose.Schema({
     nfcId: {
@@ -522,8 +614,13 @@ app.get("/api/owner/tags", requireOwner, async (req, res) => {
 // ==================================================
 
 app.post("/api/admin/login", async (req, res) => {
+
+
+     console.log("ADMIN LOGIN ROUTE REACHED");
+
     try {
         const { email, password } = req.body;
+
 
         if (
             typeof email !== "string" ||
@@ -537,6 +634,16 @@ app.post("/api/admin/login", async (req, res) => {
         const admin = await Admin.findOne({
             email: email.trim().toLowerCase()
         });
+
+
+// DEBUG: Check whether the admin account exists
+console.log("Admin account found:", Boolean(admin));
+
+console.log(
+    "Password hash looks valid:",
+    Boolean(admin?.passwordHash?.startsWith("$2"))
+);
+
 
         if (
             !admin ||
@@ -1138,7 +1245,7 @@ Finder name: ${access.chat.finderName}
 Please log in to Tap N Found and open your item's chat dashboard to view the message and reply.
 
 Login to Tap N Found:
-https://tnf-n44q.onrender.com/
+https://tnf-cqsa.onrender.com/
 
 Thank you,
 Tap N Found Team`,
@@ -1268,3 +1375,23 @@ startServer().catch((error) => {
     console.error("Server startup failed:", error.message);
     process.exit(1);
 });
+
+
+mongoose.connect(process.env.MONGODB_URI)
+    .then(async () => {
+        console.log("MongoDB connected successfully.");
+
+        await ensureAdminAccount();
+
+        app.listen(process.env.PORT || 5000, () => {
+            console.log(
+                `Tap N Found server running on port ${
+                    process.env.PORT || 5000
+                }`
+            );
+        });
+    })
+    .catch((error) => {
+        console.error("Server startup failed:", error.message);
+        process.exit(1);
+    });
