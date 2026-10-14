@@ -1,3 +1,7 @@
+// ==================================================
+// TAP N FOUND — NFC REGISTRATION AND CHAT
+// Login UI removed; account creation retained.
+// ==================================================
 
 const $ = (id) => document.getElementById(id);
 
@@ -10,9 +14,16 @@ let selectedOwnerChat = "";
 
 const finderStorageKey = (id) => `tnf_finder_chat_${id}`;
 
+// --------------------------------------------------
+// NOTIFICATIONS AND PAGE SECTIONS
+// --------------------------------------------------
+
 function notice(message, isError = false) {
-    $("notice").textContent = message || "";
-    $("notice").style.color = isError ? "#c62828" : "#167342";
+    const element = $("notice");
+    if (!element) return;
+
+    element.textContent = message || "";
+    element.style.color = isError ? "#c62828" : "#167342";
 }
 
 function showOnly(sectionId) {
@@ -23,7 +34,10 @@ function showOnly(sectionId) {
         "finderSection",
         "errorSection"
     ].forEach((id) => {
-        $(id).hidden = id !== sectionId;
+        const section = $(id);
+        if (section) {
+            section.hidden = id !== sectionId;
+        }
     });
 }
 
@@ -34,12 +48,26 @@ function stopPolling() {
     }
 }
 
+function showError(message) {
+    stopPolling();
+    showOnly("errorSection");
+
+    const errorText = $("errorText");
+    if (errorText) errorText.textContent = message;
+}
+
+// --------------------------------------------------
+// API HELPERS
+// --------------------------------------------------
+
 async function api(url, options = {}) {
     const response = await fetch(url, {
         credentials: "same-origin",
         ...options,
         headers: {
-            ...(options.body ? { "Content-Type": "application/json" } : {}),
+            ...(options.body
+                ? { "Content-Type": "application/json" }
+                : {}),
             ...(options.headers || {})
         }
     });
@@ -47,17 +75,23 @@ async function api(url, options = {}) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-        throw new Error(data.error || `Request failed (${response.status})`);
+        throw new Error(
+            data.error || `Request failed (${response.status})`
+        );
     }
 
     return data;
 }
 
 function jsonBody(value) {
-    return { body: JSON.stringify(value) };
+    return {
+        body: JSON.stringify(value)
+    };
 }
 
 function formatTime(dateString) {
+    if (!dateString) return "";
+
     const date = new Date(dateString);
 
     if (Number.isNaN(date.getTime())) return "";
@@ -68,105 +102,51 @@ function formatTime(dateString) {
     });
 }
 
-function showError(message) {
-    stopPolling();
-    showOnly("errorSection");
-    $("errorText").textContent = message;
-}
-
-function showLoginForm() {
-    $("loginForm").hidden = false;
-    $("signupForm").hidden = true;
-    $("showLogin").classList.add("active");
-    $("showSignup").classList.remove("active");
-}
-
-function showSignupForm() {
-    $("loginForm").hidden = true;
-    $("signupForm").hidden = false;
-    $("showLogin").classList.remove("active");
-    $("showSignup").classList.add("active");
-}
-
-$("showLogin").addEventListener("click", showLoginForm);
-$("showSignup").addEventListener("click", showSignupForm);
-
 // --------------------------------------------------
-// OWNER SIGNUP AND LOGIN
+// OWNER ACCOUNT CREATION
+// No login form or login-button handlers.
 // --------------------------------------------------
 
-$("signupForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
+const signupForm = $("signupForm");
 
-    const button = $("signupForm").querySelector("button[type=submit]");
-    button.disabled = true;
-    notice("");
+if (signupForm) {
+    signupForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
 
-    try {
-        await api("/api/auth/register", {
-            method: "POST",
-            ...jsonBody({
-                name: $("signupName").value.trim(),
-                email: $("signupEmail").value.trim(),
-                password: $("signupPassword").value
-            })
-        });
+        const button = signupForm.querySelector(
+            'button[type="submit"]'
+        );
 
-        $("signupForm").reset();
-        await initializePage();
-        notice("Account created successfully.");
-    } catch (error) {
-        notice(error.message, true);
-    } finally {
-        button.disabled = false;
-    }
-});
+        if (button) button.disabled = true;
+        notice("");
 
-$("loginForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
+        try {
+            await api("/api/auth/register", {
+                method: "POST",
+                ...jsonBody({
+                    name: $("signupName").value.trim(),
+                    email: $("signupEmail").value.trim(),
+                    password: $("signupPassword").value
+                })
+            });
 
-    const button = $("loginForm").querySelector("button[type=submit]");
-    button.disabled = true;
-    notice("");
+            signupForm.reset();
 
-    try {
-        await api("/api/auth/login", {
-            method: "POST",
-            ...jsonBody({
-                email: $("loginEmail").value.trim(),
-                password: $("loginPassword").value
-            })
-        });
+            notice("Account created successfully.");
 
-        $("loginForm").reset();
-        await initializePage();
-        notice("Login successful.");
-    } catch (error) {
-        notice(error.message, true);
-    } finally {
-        button.disabled = false;
-    }
-});
-
-$("logoutButton").addEventListener("click", async () => {
-    try {
-        stopPolling();
-
-        await api("/api/auth/logout", {
-            method: "POST"
-        });
-
-        await initializePage();
-        notice("You have logged out.");
-    } catch (error) {
-        notice(error.message, true);
-    }
-});
+            // Refresh page state after account creation.
+            await initializePage();
+        } catch (error) {
+            notice(error.message, true);
+        } finally {
+            if (button) button.disabled = false;
+        }
+    });
+}
 
 // --------------------------------------------------
 // INITIAL PAGE AND ROLE DETECTION
 // --------------------------------------------------
-
 
 async function initializePage() {
     stopPolling();
@@ -176,27 +156,55 @@ async function initializePage() {
     selectedOwnerChat = "";
     currentRole = "";
 
-    const match = window.location.pathname.match(/^\/(\d{3})\/?$/);
+    const match = window.location.pathname.match(
+        /^\/(\d{3})\/?$/
+    );
 
     if (!match) {
         currentNfcId = "";
-        $("pageTitle").textContent = "Tap N Found";
-        $("tagInfo").textContent = "Open a valid NFC URL such as /001.";
-        showError("No valid three-digit NFC ID was found in this URL.");
+
+        if ($("pageTitle")) {
+            $("pageTitle").textContent = "Tap N Found";
+        }
+
+        if ($("tagInfo")) {
+            $("tagInfo").textContent =
+                "Open a valid NFC URL such as /001.";
+        }
+
+        showError(
+            "No valid three-digit NFC ID was found in this URL."
+        );
+
         return;
     }
 
     currentNfcId = match[1];
+
     $("tagInfo").textContent = `NFC Tag ID: ${currentNfcId}`;
     $("pageTitle").textContent = "Checking your tag...";
     notice("");
 
     try {
-        const [tagData, sessionData] = await Promise.all([
-            api(`/api/nfc/${currentNfcId}`),
-            api("/api/auth/me")
-        ]);
+        // First retrieve the NFC tag.
+        const tagData = await api(
+            `/api/nfc/${currentNfcId}`
+        );
 
+        // A visitor without a session should still be able to
+        // access the public finder interface.
+        let sessionData = {
+            loggedIn: false,
+            owner: null
+        };
+
+        try {
+            sessionData = await api("/api/auth/me");
+        } catch (error) {
+            console.info("No active owner session.");
+        }
+
+        // Unregistered tag.
         if (!tagData.registered) {
             $("pageTitle").textContent = "Register your item";
 
@@ -205,34 +213,54 @@ async function initializePage() {
                 return;
             }
 
+            // Login UI has been removed.
+            // Display account creation instead.
             showOnly("authSection");
-            showLoginForm();
-            notice("Log in or create an owner account to register this tag.");
+
+            notice(
+                "Create an owner account to continue registering this tag."
+            );
+
             return;
         }
 
-        $("pageTitle").textContent = tagData.nfc.item;
-        $("tagInfo").textContent =
-            `Tag ${currentNfcId} · ${tagData.nfc.status}`;
+        if (!tagData.nfc) {
+            throw new Error(
+                "The server did not return NFC tag details."
+            );
+        }
 
-        if (sessionData.loggedIn && tagData.role === "owner") {
+        $("pageTitle").textContent =
+            tagData.nfc.item || "Registered item";
+
+        $("tagInfo").textContent =
+            `Tag ${currentNfcId} · ${tagData.nfc.status || "registered"}`;
+
+        // Registered tag opened by its owner.
+        if (
+            sessionData.loggedIn &&
+            tagData.role === "owner"
+        ) {
             currentRole = "owner";
 
             $("ownerGreeting").textContent =
-                `Welcome, ${sessionData.owner.name}.`;
+                `Welcome, ${sessionData.owner?.name || "Owner"}.`;
 
             showOnly("ownerSection");
+
             await loadOwnerChats();
             return;
         }
 
-        // Public visitors can continue to use the finder interface.
+        // Registered tag opened by a finder.
         currentRole = "finder";
 
         $("finderItemInfo").textContent =
-            `Item: ${tagData.nfc.item}. Start a private conversation with its owner.`;
+            `Item: ${tagData.nfc.item || "Registered item"}. ` +
+            "Start a private conversation with its owner.";
 
         showOnly("finderSection");
+
         await restoreFinderChat();
 
     } catch (error) {
@@ -240,68 +268,91 @@ async function initializePage() {
     }
 }
 
-
 // --------------------------------------------------
 // REGISTER AN UNUSED NFC TAG
 // --------------------------------------------------
 
-$("registerTagForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
+const registerTagForm = $("registerTagForm");
 
-    const button = $("registerTagForm").querySelector("button[type=submit]");
-    button.disabled = true;
-    notice("");
+if (registerTagForm) {
+    registerTagForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
 
-    try {
-        await api(`/api/nfc/${currentNfcId}/register`, {
-            method: "POST",
-            ...jsonBody({
-                item: $("itemName").value.trim()
-            })
-        });
+        const button = registerTagForm.querySelector(
+            'button[type="submit"]'
+        );
 
-        $("registerTagForm").reset();
-        await initializePage();
-        notice("NFC tag registered successfully.");
-    } catch (error) {
-        notice(error.message, true);
-    } finally {
-        button.disabled = false;
-    }
-});
+        if (button) button.disabled = true;
+        notice("");
+
+        try {
+            await api(
+                `/api/nfc/${currentNfcId}/register`,
+                {
+                    method: "POST",
+                    ...jsonBody({
+                        item: $("itemName").value.trim()
+                    })
+                }
+            );
+
+            registerTagForm.reset();
+
+            notice("NFC tag registered successfully.");
+
+            await initializePage();
+
+        } catch (error) {
+            notice(error.message, true);
+        } finally {
+            if (button) button.disabled = false;
+        }
+    });
+}
 
 // --------------------------------------------------
 // OWNER: LOAD CONVERSATIONS
 // --------------------------------------------------
 
 async function loadOwnerChats() {
-    const data = await api(`/api/nfc/${currentNfcId}/chats`);
+    const data = await api(
+        `/api/nfc/${currentNfcId}/chats`
+    );
+
+    const chats = Array.isArray(data.chats)
+        ? data.chats
+        : [];
 
     const list = $("chatList");
     list.replaceChildren();
 
-    if (!data.chats.length) {
+    if (chats.length === 0) {
         const empty = document.createElement("p");
+
         empty.className = "muted";
         empty.textContent = "No finder messages yet.";
+
         list.appendChild(empty);
 
         $("ownerChatArea").hidden = true;
         stopPolling();
+
         return;
     }
 
-    for (const chat of data.chats) {
+    for (const chat of chats) {
         const button = document.createElement("button");
+
         button.type = "button";
         button.className = "chat-item";
+        button.dataset.chatId = chat._id;
 
         if (chat._id === selectedOwnerChat) {
             button.classList.add("selected");
         }
 
         const name = document.createElement("span");
-        name.textContent = chat.finderName;
+        name.textContent = chat.finderName || "Finder";
 
         const date = document.createElement("small");
         date.textContent = formatTime(chat.lastMessageAt);
@@ -317,25 +368,33 @@ async function loadOwnerChats() {
             });
 
             button.classList.add("selected");
+
             $("ownerChatTitle").textContent =
-                `Chat with ${chat.finderName}`;
+                `Chat with ${chat.finderName || "Finder"}`;
 
             $("ownerChatArea").hidden = false;
 
-            await loadMessages("owner");
-            startPolling("owner");
+            try {
+                await loadMessages("owner");
+                startPolling("owner");
+            } catch (error) {
+                notice(error.message, true);
+            }
         });
 
         list.appendChild(button);
     }
 
-    const chosen = data.chats.find(
-        (chat) => chat._id === selectedOwnerChat
-    ) || data.chats[0];
+    const chosen =
+        chats.find((chat) => chat._id === selectedOwnerChat) ||
+        chats[0];
 
     selectedOwnerChat = chosen._id;
     currentChatId = chosen._id;
-    $("ownerChatTitle").textContent = `Chat with ${chosen.finderName}`;
+
+    $("ownerChatTitle").textContent =
+        `Chat with ${chosen.finderName || "Finder"}`;
+
     $("ownerChatArea").hidden = false;
 
     await loadMessages("owner");
@@ -343,11 +402,13 @@ async function loadOwnerChats() {
 }
 
 // --------------------------------------------------
-// FINDER: CREATE OR RESTORE A CHAT
+// FINDER: RESTORE AN EXISTING CHAT
 // --------------------------------------------------
 
 async function restoreFinderChat() {
-    const saved = localStorage.getItem(finderStorageKey(currentNfcId));
+    const saved = localStorage.getItem(
+        finderStorageKey(currentNfcId)
+    );
 
     if (!saved) {
         $("finderStartForm").hidden = false;
@@ -368,21 +429,32 @@ async function restoreFinderChat() {
         currentChatId = parsed.chatId;
         finderToken = parsed.token;
 
-        await api(`/api/chats/${currentChatId}/messages`, {
-            headers: { "x-finder-token": finderToken }
-        });
+        await api(
+            `/api/chats/${currentChatId}/messages`,
+            {
+                headers: {
+                    "x-finder-token": finderToken
+                }
+            }
+        );
 
         $("finderStartForm").hidden = true;
         $("finderChatArea").hidden = false;
 
         await loadMessages("finder");
         startPolling("finder");
+
     } catch (error) {
-        localStorage.removeItem(finderStorageKey(currentNfcId));
+        localStorage.removeItem(
+            finderStorageKey(currentNfcId)
+        );
+
         currentChatId = "";
         finderToken = "";
+
         $("finderStartForm").hidden = false;
         $("finderChatArea").hidden = true;
+
         notice(
             "Your previous chat could not be restored. You can start a new chat.",
             true
@@ -390,60 +462,86 @@ async function restoreFinderChat() {
     }
 }
 
-$("finderStartForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
+// --------------------------------------------------
+// FINDER: START A NEW CHAT
+// --------------------------------------------------
 
-    const button = $("finderStartForm").querySelector("button[type=submit]");
-    button.disabled = true;
-    notice("");
+const finderStartForm = $("finderStartForm");
 
-    try {
-        const data = await api(`/api/nfc/${currentNfcId}/chats`, {
-            method: "POST",
-            ...jsonBody({
-                finderName: $("finderName").value.trim()
-            })
-        });
+if (finderStartForm) {
+    finderStartForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
 
-        currentChatId = data.chat.id;
-        finderToken = data.finderToken;
-
-        // The token is a secret granting access to this finder chat.
-        localStorage.setItem(
-            finderStorageKey(currentNfcId),
-            JSON.stringify({
-                chatId: currentChatId,
-                token: finderToken
-            })
+        const button = finderStartForm.querySelector(
+            'button[type="submit"]'
         );
 
-        $("finderStartForm").hidden = true;
-        $("finderChatArea").hidden = false;
+        if (button) button.disabled = true;
+        notice("");
 
-        await loadMessages("finder");
-        startPolling("finder");
-    } catch (error) {
-        notice(error.message, true);
-    } finally {
-        button.disabled = false;
-    }
-});
+        try {
+            const data = await api(
+                `/api/nfc/${currentNfcId}/chats`,
+                {
+                    method: "POST",
+                    ...jsonBody({
+                        finderName: $("finderName").value.trim()
+                    })
+                }
+            );
+
+            if (!data.chat?.id || !data.finderToken) {
+                throw new Error(
+                    "The server did not return the chat details."
+                );
+            }
+
+            currentChatId = data.chat.id;
+            finderToken = data.finderToken;
+
+            // Store the finder chat access token locally.
+            localStorage.setItem(
+                finderStorageKey(currentNfcId),
+                JSON.stringify({
+                    chatId: currentChatId,
+                    token: finderToken
+                })
+            );
+
+            finderStartForm.hidden = true;
+            $("finderChatArea").hidden = false;
+
+            await loadMessages("finder");
+            startPolling("finder");
+
+        } catch (error) {
+            notice(error.message, true);
+        } finally {
+            if (button) button.disabled = false;
+        }
+    });
+}
 
 // --------------------------------------------------
-// LOAD AND DISPLAY CHAT MESSAGES
+// LOAD AND DISPLAY MESSAGES
 // --------------------------------------------------
 
 function renderMessages(containerId, messages, role) {
     const container = $(containerId);
+
     const wasAtBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+        container.scrollHeight -
+        container.scrollTop -
+        container.clientHeight < 50;
 
     container.replaceChildren();
 
-    if (!messages.length) {
+    if (!Array.isArray(messages) || messages.length === 0) {
         const empty = document.createElement("p");
+
         empty.className = "muted";
         empty.textContent = "No messages yet. Say hello!";
+
         container.appendChild(empty);
         return;
     }
@@ -458,12 +556,13 @@ function renderMessages(containerId, messages, role) {
 
         const sender = document.createElement("span");
         sender.className = "message-sender";
+
         sender.textContent =
             message.sender === "owner" ? "Owner" : "Finder";
 
         const text = document.createElement("div");
         text.className = "message-text";
-        text.textContent = message.text;
+        text.textContent = message.text || "";
 
         const time = document.createElement("span");
         time.className = "message-time";
@@ -484,7 +583,9 @@ async function loadMessages(role) {
     const options = {};
 
     if (role === "finder") {
-        options.headers = { "x-finder-token": finderToken };
+        options.headers = {
+            "x-finder-token": finderToken
+        };
     }
 
     const data = await api(
@@ -493,9 +594,17 @@ async function loadMessages(role) {
     );
 
     if (role === "owner") {
-        renderMessages("ownerMessages", data.messages, role);
+        renderMessages(
+            "ownerMessages",
+            data.messages,
+            role
+        );
     } else {
-        renderMessages("finderMessages", data.messages, role);
+        renderMessages(
+            "finderMessages",
+            data.messages,
+            role
+        );
     }
 }
 
@@ -506,12 +615,15 @@ async function loadMessages(role) {
 async function sendMessage(role, inputId, formId) {
     const form = $(formId);
     const input = $(inputId);
-    const button = form.querySelector("button[type=submit]");
+    const button = form.querySelector(
+        'button[type="submit"]'
+    );
+
     const text = input.value.trim();
 
     if (!text || !currentChatId) return;
 
-    button.disabled = true;
+    if (button) button.disabled = true;
 
     try {
         const options = {
@@ -520,7 +632,9 @@ async function sendMessage(role, inputId, formId) {
         };
 
         if (role === "finder") {
-            options.headers = { "x-finder-token": finderToken };
+            options.headers = {
+                "x-finder-token": finderToken
+            };
         }
 
         await api(
@@ -529,31 +643,51 @@ async function sendMessage(role, inputId, formId) {
         );
 
         input.value = "";
+
         await loadMessages(role);
 
         if (role === "owner") {
             await refreshOwnerChatList();
         }
+
     } catch (error) {
         notice(error.message, true);
     } finally {
-        button.disabled = false;
+        if (button) button.disabled = false;
         input.focus();
     }
 }
 
-$("ownerMessageForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    sendMessage("owner", "ownerMessageInput", "ownerMessageForm");
-});
+const ownerMessageForm = $("ownerMessageForm");
 
-$("finderMessageForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    sendMessage("finder", "finderMessageInput", "finderMessageForm");
-});
+if (ownerMessageForm) {
+    ownerMessageForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        sendMessage(
+            "owner",
+            "ownerMessageInput",
+            "ownerMessageForm"
+        );
+    });
+}
+
+const finderMessageForm = $("finderMessageForm");
+
+if (finderMessageForm) {
+    finderMessageForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        sendMessage(
+            "finder",
+            "finderMessageInput",
+            "finderMessageForm"
+        );
+    });
+}
 
 // --------------------------------------------------
-// REFRESH MESSAGES WHILE CHAT IS OPEN
+// CHAT POLLING
 // --------------------------------------------------
 
 function startPolling(role) {
@@ -568,19 +702,32 @@ function startPolling(role) {
                 await loadMessages("finder");
             }
         } catch (error) {
-            console.error("Chat refresh failed:", error.message);
+            console.error(
+                "Chat refresh failed:",
+                error.message
+            );
         }
     }, 4000);
 }
 
-async function refreshOwnerChatList() {
-    const data = await api(`/api/nfc/${currentNfcId}/chats`);
+// --------------------------------------------------
+// REFRESH OWNER CHAT TIMESTAMPS
+// --------------------------------------------------
 
-    // Refresh timestamps without rebuilding the buttons,
-    // so the current chat selection stays stable.
-    for (const chat of data.chats) {
-        const button = [...$("chatList").children].find(
-            (element) => element.querySelector("span")?.textContent === chat.finderName
+async function refreshOwnerChatList() {
+    const data = await api(
+        `/api/nfc/${currentNfcId}/chats`
+    );
+
+    const chats = Array.isArray(data.chats)
+        ? data.chats
+        : [];
+
+    const buttons = [...$("chatList").children];
+
+    for (const chat of chats) {
+        const button = buttons.find(
+            (element) => element.dataset.chatId === chat._id
         );
 
         if (button) {
@@ -593,5 +740,8 @@ async function refreshOwnerChatList() {
     }
 }
 
-// Start the page.
+// --------------------------------------------------
+// START THE APPLICATION
+// --------------------------------------------------
+
 initializePage();
