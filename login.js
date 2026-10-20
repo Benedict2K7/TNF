@@ -1,4 +1,3 @@
-
 const loginForm = document.getElementById("loginForm");
 const emailInput = document.getElementById("email");
 const passwordInput = document.getElementById("password");
@@ -9,6 +8,7 @@ loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     message.textContent = "";
+    message.style.color = "#dc2626";
     loginButton.disabled = true;
     loginButton.textContent = "Logging in...";
 
@@ -31,33 +31,13 @@ loginForm.addEventListener("submit", async (event) => {
             throw new Error(result.error || "Login failed.");
         }
 
-        // Load the NFC items owned by this account.
-        const tagsResponse = await fetch("/api/owner/tags", {
-            credentials: "same-origin"
-        });
+        message.style.color = "#16a34a";
+        message.textContent = "Login successful! Redirecting...";
 
-        const tagsResult = await tagsResponse.json();
-
-        if (!tagsResponse.ok) {
-            throw new Error(
-                tagsResult.error || "Logged in, but could not load your items."
-            );
-        }
-
-        if (!tagsResult.tags || tagsResult.tags.length === 0) {
-            message.textContent =
-                "Login successful, but no registered items were found. Open your NFC tag page to register an item.";
-            loginButton.textContent = "Logged in";
-            loginButton.disabled = true;
-            return;
-        }
-
-        // Open the most recently created registered item.
-        const tag = tagsResult.tags[0];
-
-        window.location.replace(
-            "/" + encodeURIComponent(tag.nfcId)
-        );
+        // Redirect to main portal / dashboard
+        setTimeout(() => {
+            window.location.replace("/");
+        }, 500);
 
     } catch (error) {
         message.textContent = error.message;

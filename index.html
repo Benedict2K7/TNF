@@ -3,212 +3,511 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Tap N Found | NFC Chat</title>
-
+    <title>Tap N Found | Smart NFC & QR Lost & Found</title>
     <link rel="stylesheet" href="./style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="./script.js" defer></script>
 </head>
-
 <body>
-    <!-- Header -->
+
+    <!-- Top Navigation Bar -->
     <header class="topbar">
-        <a class="brand" href="/">Tap N Found</a>
-        <span class="tagline">Tap. Find. Connect.</span>
+        <div class="topbar-inner">
+            <a class="brand" href="/" id="brandLink">
+                <span class="brand-logo">TNF</span>
+                <span class="brand-text">Tap N Found</span>
+            </a>
+
+            <nav class="topbar-nav" id="topNav">
+                <button class="nav-btn active" id="navHomeBtn">Explore</button>
+                <button class="nav-btn" id="navOwnerBtn">Owner Portal</button>
+                <a class="nav-btn admin-link" href="/admin" target="_blank" rel="noopener">Admin ↗</a>
+            </nav>
+
+            <div class="topbar-auth" id="userAuthBadge">
+                <a href="/login" class="btn btn-outline-light btn-sm" id="navLoginBtn">Log in</a>
+                <button class="btn btn-primary btn-sm" id="navRegisterBtn">Create Account</button>
+            </div>
+        </div>
     </header>
 
-    <main class="container">
+    <main class="main-container">
 
-        <!-- NFC tag information -->
-        <section class="panel">
-            <p class="eyebrow">NFC LOST & FOUND</p>
+        <!-- Global Status Notice Banner -->
+        <div id="notice" class="notice-banner" role="status" aria-live="polite" hidden></div>
 
-            <h1 id="pageTitle">Connecting...</h1>
+        <!-- 1. LANDING & EXPLORE SECTION (Default view on /) -->
+        <section id="landingSection" class="panel hero-panel">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <span class="pulse-dot"></span>
+                    <span>Smart NFC & QR Lost & Found</span>
+                </div>
+                <h1 class="hero-title">Tap. Find. Connect.</h1>
+                <p class="hero-subtitle">
+                    Protect your keys, wallet, backpack, and valuables. When found, anyone can tap the NFC tag or scan the QR code to chat with you safely without seeing your private details.
+                </p>
 
-            <p id="tagInfo" class="muted">
-                Checking this NFC tag...
-            </p>
+                <!-- Tag Lookup / Simulator Form -->
+                <div class="lookup-card">
+                    <label for="lookupInput" class="lookup-label">Found an item or testing a tag?</label>
+                    <div class="lookup-input-group">
+                        <div class="input-with-icon">
+                            <span class="input-icon">🏷️</span>
+                            <input
+                                id="lookupInput"
+                                type="text"
+                                placeholder="Enter Tag ID (e.g. 101 or keys-1)"
+                                maxlength="24"
+                                autocomplete="off"
+                            >
+                        </div>
+                        <button id="lookupButton" class="btn btn-primary">Open Tag Chat</button>
+                    </div>
+                    <div class="quick-tags">
+                        <span>Quick try:</span>
+                        <button class="tag-chip" data-tag="101">Tag #101</button>
+                        <button class="tag-chip" data-tag="001">Tag #001</button>
+                        <button class="tag-chip" data-tag="demo">Tag #demo</button>
+                    </div>
+                </div>
 
-            <p id="notice" role="status" aria-live="polite"></p>
+                <!-- Feature Highlights -->
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Instant NFC Tap</h3>
+                        <p>Works natively on iPhone & Android with a single gentle tap. No mobile apps needed.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📱</div>
+                        <h3>QR Code Backup</h3>
+                        <p>Every tag automatically generates a printable QR sticker for cameras without NFC.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📍</div>
+                        <h3>1-Click GPS Share</h3>
+                        <p>Finders can instantly send the item's pinned Google Maps location to the owner.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔒</div>
+                        <h3>Privacy First</h3>
+                        <p>End-to-end masked messaging keeps your personal phone number and address secure.</p>
+                    </div>
+                </div>
+            </div>
         </section>
 
-        <!-- Owner account creation: no login form -->
-        <section id="authSection" class="panel" hidden>
-            <h2>Create owner account</h2>
-
-            <p class="muted">
-                Create an account to manage your registered items
-                and communicate with finders.
-            </p>
-
-            <form id="signupForm">
-                <label for="signupName">Your name</label>
-                <input
-                    id="signupName"
-                    type="text"
-                    maxlength="100"
-                    autocomplete="name"
-                    required
-                >
-
-                <label for="signupEmail">Email address</label>
-                <input
-                    id="signupEmail"
-                    type="email"
-                    maxlength="254"
-                    autocomplete="email"
-                    required
-                >
-
-                <label for="signupPassword">Create password</label>
-                <input
-                    id="signupPassword"
-                    type="password"
-                    minlength="8"
-                    maxlength="72"
-                    autocomplete="new-password"
-                    required
-                >
-
-                <button class="primary" type="submit">
-                    Create account
-                </button>
-            </form>
+        <!-- 2. TAG STATUS HEADER (Shown when inspecting a specific tag) -->
+        <section id="tagHeaderPanel" class="panel tag-header-panel" hidden>
+            <div class="tag-header-top">
+                <div class="tag-badges">
+                    <span class="badge badge-tag" id="tagIdBadge">TAG #---</span>
+                    <span class="badge" id="tagStatusBadge">Checking...</span>
+                </div>
+                <button class="btn btn-sm btn-outline" id="backToHomeBtn">← Back to Explore</button>
+            </div>
+            <h1 id="pageTitle" class="tag-title">Checking tag...</h1>
+            <p id="tagInfo" class="muted">Connecting to Tap N Found network...</p>
         </section>
 
-        <!-- Register an unused NFC tag -->
-        <section id="registerTagSection" class="panel" hidden>
-            <h2>Register this NFC tag</h2>
-
-            <p class="muted">
-                This tag is not registered yet. Add the item to your account.
-            </p>
-
-            <form id="registerTagForm">
-                <label for="itemName">Item name</label>
-
-                <input
-                    id="itemName"
-                    type="text"
-                    maxlength="100"
-                    placeholder="Phone, bag, keys..."
-                    required
-                >
-
-                <button class="primary" type="submit">
-                    Register tag
-                </button>
-            </form>
-        </section>
-
-        <!-- Owner dashboard -->
-        <section id="ownerSection" class="panel" hidden>
-            <div class="section-heading">
-                <div>
-                    <p class="eyebrow">OWNER DASHBOARD</p>
-                    <h2>Finder conversations</h2>
+        <!-- 3. FINDER CHAT & CONTACT INTERFACE -->
+        <section id="finderSection" class="panel finder-panel" hidden>
+            <div class="finder-header">
+                <div class="finder-title-area">
+                    <span class="eyebrow">FINDER PORTAL</span>
+                    <h2>Help Return This Item</h2>
+                    <p id="finderItemInfo" class="muted">You are safely connected with the owner.</p>
+                </div>
+                <div class="owner-status-box" id="finderOwnerBox">
+                    <span class="avatar-circle">👤</span>
+                    <div>
+                        <strong id="finderOwnerName">Owner</strong>
+                        <small id="finderItemCategory">Protected Item</small>
+                    </div>
                 </div>
             </div>
 
-            <p id="ownerGreeting" class="muted"></p>
+            <!-- Urgent Lost Alert Banner (if owner marked as lost) -->
+            <div id="itemLostAlert" class="alert-banner alert-danger" hidden>
+                <span class="alert-icon">🚨</span>
+                <div>
+                    <strong>Owner reported this item as LOST!</strong>
+                    <p>Please message the owner or share your location below so they can recover it safely.</p>
+                </div>
+            </div>
 
-            <div id="chatList" class="chat-list"></div>
+            <!-- Quick Action Bar for Finders -->
+            <div class="finder-actions-bar" id="finderActionsBar">
+                <button id="finderShareLocationBtn" class="btn btn-action btn-location" title="Send current GPS pin to owner">
+                    <span class="btn-icon">📍</span> Share Found Location
+                </button>
+                <a id="finderWhatsAppBtn" class="btn btn-action btn-whatsapp" target="_blank" rel="noopener" hidden>
+                    <span class="btn-icon">💬</span> Chat on WhatsApp
+                </a>
+            </div>
 
-            <!-- Owner conversation -->
-            <div id="ownerChatArea" hidden>
-                <h3 id="ownerChatTitle">Conversation</h3>
+            <!-- Location Status Confirmation -->
+            <div id="locationStatus" class="location-status-card" hidden>
+                <div class="location-spinner"></div>
+                <span id="locationStatusText">Acquiring GPS location...</span>
+            </div>
 
-                <div
-                    id="ownerMessages"
-                    class="messages"
-                    aria-live="polite"
-                ></div>
-
-                <form id="ownerMessageForm" class="message-form">
-                    <input
-                        id="ownerMessageInput"
-                        type="text"
-                        placeholder="Write a reply..."
-                        maxlength="1000"
-                        required
-                    >
-
-                    <button class="primary" type="submit">
-                        Send
-                    </button>
+            <!-- Start finder chat form -->
+            <div id="finderStartArea">
+                <form id="finderStartForm" class="finder-start-card">
+                    <h3>Start Private Conversation</h3>
+                    <p class="muted">Enter your name or a nickname to notify the owner immediately.</p>
+                    <div class="input-row">
+                        <input
+                            id="finderNameInput"
+                            type="text"
+                            placeholder="Your name or nickname (e.g. Alex)"
+                            maxlength="50"
+                            autocomplete="name"
+                            required
+                        >
+                        <button class="btn btn-primary" type="submit">Start Chat</button>
+                    </div>
                 </form>
             </div>
-        </section>
 
-        <!-- Finder interface -->
-        <section id="finderSection" class="panel" hidden>
-            <p class="eyebrow">FINDER CHAT</p>
+            <!-- Active Finder Chat Area -->
+            <div id="finderChatArea" class="chat-area" hidden>
+                <!-- Quick Reply Suggestions -->
+                <div class="quick-replies" id="quickReplies">
+                    <button class="quick-chip">I found your item!</button>
+                    <button class="quick-chip">Left it at building security</button>
+                    <button class="quick-chip">How can I return this to you?</button>
+                </div>
 
-            <h2>Contact the owner</h2>
+                <div id="finderMessages" class="messages-container" aria-live="polite"></div>
 
-            <p id="finderItemInfo" class="muted"></p>
-
-            <form id="finderStartForm">
-                <label for="finderName">Choose a nickname</label>
-
-                <input
-                    id="finderName"
-                    type="text"
-                    maxlength="50"
-                    placeholder="Your name or nickname"
-                    autocomplete="nickname"
-                    required
-                >
-
-                <button class="primary" type="submit">
-                    Start chat
-                </button>
-            </form>
-
-            <!-- Finder conversation -->
-            <div id="finderChatArea" hidden>
-                <h3>Chat with the owner</h3>
-
-                <p class="muted">
-                    Please don't share passwords, financial information,
-                    or other sensitive details in chat.
-                </p>
-
-                <div
-                    id="finderMessages"
-                    class="messages"
-                    aria-live="polite"
-                ></div>
-
-                <form id="finderMessageForm" class="message-form">
+                <form id="finderMessageForm" class="message-input-form">
                     <input
                         id="finderMessageInput"
                         type="text"
-                        placeholder="Write a message..."
+                        placeholder="Write a message to the owner..."
                         maxlength="1000"
+                        autocomplete="off"
                         required
                     >
-
-                    <button class="primary" type="submit">
-                        Send
+                    <button class="btn btn-primary btn-send" type="submit">
+                        <span>Send</span>
+                        <span class="send-arrow">➤</span>
                     </button>
                 </form>
             </div>
         </section>
 
-        <!-- Error messages -->
-        <section id="errorSection" class="panel" hidden>
-            <h2>Unable to open this tag</h2>
+        <!-- 4. OWNER DASHBOARD INTERFACE -->
+        <section id="ownerSection" class="panel owner-panel" hidden>
+            <div class="owner-header">
+                <div>
+                    <span class="eyebrow">OWNER COMMAND CENTER</span>
+                    <h2 id="ownerGreeting">Welcome back</h2>
+                    <p class="muted">Manage your protected items, stickers, and finder messages.</p>
+                </div>
+                <div class="owner-actions">
+                    <button class="btn btn-sm btn-outline" id="ownerLogoutBtn">Log Out</button>
+                </div>
+            </div>
 
-            <p id="errorText"></p>
+            <!-- Owner Navigation Tabs -->
+            <div class="owner-tabs">
+                <button class="tab-btn active" data-tab="items" id="tabItemsBtn">
+                    <span>📦 My Registered Items</span>
+                    <span class="tab-count" id="itemsCountBadge">0</span>
+                </button>
+                <button class="tab-btn" data-tab="chats" id="tabChatsBtn">
+                    <span>💬 Finder Conversations</span>
+                    <span class="tab-count" id="chatsCountBadge">0</span>
+                </button>
+                <button class="tab-btn" data-tab="register" id="tabRegisterBtn">
+                    <span>➕ Register New Tag</span>
+                </button>
+            </div>
+
+            <!-- Tab 1: My Items List & QR Codes -->
+            <div id="ownerTabItems" class="tab-content">
+                <div class="tab-header">
+                    <h3>Your Protected Valuables</h3>
+                    <p class="muted">Download printable QR codes or update item status.</p>
+                </div>
+                <div id="ownerItemsList" class="items-grid">
+                    <div class="empty-state">
+                        <span class="empty-icon">📦</span>
+                        <p>No registered items yet. Register your first tag below!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Conversations -->
+            <div id="ownerTabChats" class="tab-content" hidden>
+                <div class="chats-layout">
+                    <div class="chats-sidebar">
+                        <h4>Active Conversations</h4>
+                        <div id="chatList" class="chat-list">
+                            <p class="muted empty-chats">No active conversations yet.</p>
+                        </div>
+                    </div>
+                    <div class="chats-main">
+                        <div id="ownerChatArea" hidden>
+                            <div class="chat-main-header">
+                                <h3 id="ownerChatTitle">Conversation</h3>
+                                <span class="badge badge-active" id="chatStatusBadge">Active</span>
+                            </div>
+                            <div id="ownerMessages" class="messages-container" aria-live="polite"></div>
+                            <form id="ownerMessageForm" class="message-input-form">
+                                <input
+                                    id="ownerMessageInput"
+                                    type="text"
+                                    placeholder="Write a reply to the finder..."
+                                    maxlength="1000"
+                                    autocomplete="off"
+                                    required
+                                >
+                                <button class="btn btn-primary btn-send" type="submit">
+                                    <span>Send</span>
+                                    <span class="send-arrow">➤</span>
+                                </button>
+                            </form>
+                        </div>
+                        <div id="ownerChatPlaceholder" class="chat-placeholder">
+                            <span class="chat-placeholder-icon">💬</span>
+                            <p>Select a conversation from the list to view messages.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Register New Tag Form -->
+            <div id="ownerTabRegister" class="tab-content" hidden>
+                <form id="ownerRegisterForm" class="card-form">
+                    <h3>Register an NFC Tag</h3>
+                    <p class="muted">Link a physical NFC sticker, card, or custom tag ID to your account.</p>
+
+                    <div class="form-group">
+                        <label for="regTagId">Tag ID (NFC code or custom identifier)</label>
+                        <input
+                            id="regTagId"
+                            type="text"
+                            placeholder="e.g. 101, 002, keys-tag, bag-1"
+                            maxlength="24"
+                            pattern="^[a-zA-Z0-9_-]{3,24}$"
+                            required
+                        >
+                        <small class="form-hint">3–24 characters: letters, numbers, hyphens allowed.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="regItemName">Item Name</label>
+                        <input
+                            id="regItemName"
+                            type="text"
+                            placeholder="e.g. Car Keys, MacBook Pro, Black Gym Bag"
+                            maxlength="100"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="regItemCategory">Item Category</label>
+                            <select id="regItemCategory">
+                                <option value="keys">🔑 Keys</option>
+                                <option value="bag">🎒 Bag / Backpack</option>
+                                <option value="wallet">👛 Wallet / Purse</option>
+                                <option value="laptop">💻 Laptop / Tablet</option>
+                                <option value="phone">📱 Smartphone</option>
+                                <option value="pet">🐕 Pet Collar</option>
+                                <option value="luggage">🧳 Luggage / Suitcase</option>
+                                <option value="general" selected>📦 General Valuables</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="regPhone">WhatsApp Phone (Optional)</label>
+                            <input
+                                id="regPhone"
+                                type="tel"
+                                placeholder="e.g. +1234567890 or 9876543210"
+                                maxlength="20"
+                            >
+                            <small class="form-hint">Include country code for international WhatsApp.</small>
+                        </div>
+                    </div>
+
+                    <div class="form-checkbox">
+                        <label>
+                            <input type="checkbox" id="regAllowWhatsApp" checked>
+                            <span>Allow finders to initiate direct WhatsApp chat</span>
+                        </label>
+                    </div>
+
+                    <button class="btn btn-primary" type="submit">Complete Tag Registration</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- 5. REGISTER UNUSED TAG SECTION (When an unregistered tag URL is scanned) -->
+        <section id="registerTagSection" class="panel" hidden>
+            <div class="card-form">
+                <span class="eyebrow">UNREGISTERED TAG DETECTED</span>
+                <h2>Register This NFC Tag</h2>
+                <p class="muted">
+                    This NFC tag is ready to be assigned to your account.
+                </p>
+
+                <form id="registerTagForm">
+                    <div class="form-group">
+                        <label for="itemName">Item Name</label>
+                        <input
+                            id="itemName"
+                            type="text"
+                            maxlength="100"
+                            placeholder="e.g. Leather Wallet, Blue Backpack, House Keys"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="itemCategorySelect">Category</label>
+                        <select id="itemCategorySelect">
+                            <option value="keys">🔑 Keys</option>
+                            <option value="bag">🎒 Bag / Backpack</option>
+                            <option value="wallet">👛 Wallet</option>
+                            <option value="laptop">💻 Laptop / Electronics</option>
+                            <option value="phone">📱 Phone</option>
+                            <option value="pet">🐕 Pet</option>
+                            <option value="general" selected>📦 General Item</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="quickPhone">WhatsApp Phone Number (Optional)</label>
+                        <input
+                            id="quickPhone"
+                            type="tel"
+                            placeholder="e.g. +14155552671"
+                            maxlength="20"
+                        >
+                    </div>
+
+                    <button class="btn btn-primary" type="submit">Save & Protect Item</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- 6. OWNER ACCOUNT CREATION / AUTH SECTION -->
+        <section id="authSection" class="panel auth-panel" hidden>
+            <div class="auth-tabs">
+                <button class="auth-tab-btn active" id="authTabSignup">Create Account</button>
+                <button class="auth-tab-btn" id="authTabLogin">Log In</button>
+            </div>
+
+            <!-- Signup Form -->
+            <form id="signupForm" class="card-form">
+                <h2>Create Your Owner Account</h2>
+                <p class="muted">Sign up to register tags, download QR stickers, and track finder messages.</p>
+
+                <div class="form-group">
+                    <label for="signupName">Full Name</label>
+                    <input id="signupName" type="text" maxlength="100" autocomplete="name" required placeholder="Jane Doe">
+                </div>
+
+                <div class="form-group">
+                    <label for="signupEmail">Email Address</label>
+                    <input id="signupEmail" type="email" maxlength="254" autocomplete="email" required placeholder="jane@example.com">
+                    <small class="form-hint">Used to receive instant alerts when someone finds your item.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="signupPassword">Password</label>
+                    <input id="signupPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required placeholder="At least 8 characters">
+                </div>
+
+                <button class="btn btn-primary full-width" type="submit">Create Free Account</button>
+            </form>
+
+            <!-- Inline Login Form -->
+            <form id="inlineLoginForm" class="card-form" hidden>
+                <h2>Welcome Back</h2>
+                <p class="muted">Sign in to access your registered items and finder conversations.</p>
+
+                <div class="form-group">
+                    <label for="inlineLoginEmail">Email Address</label>
+                    <input id="inlineLoginEmail" type="email" maxlength="254" autocomplete="email" required placeholder="you@example.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="inlineLoginPassword">Password</label>
+                    <input id="inlineLoginPassword" type="password" autocomplete="current-password" required placeholder="Your password">
+                </div>
+
+                <button class="btn btn-primary full-width" type="submit">Sign In</button>
+            </form>
+        </section>
+
+        <!-- 7. ERROR SECTION -->
+        <section id="errorSection" class="panel error-panel" hidden>
+            <div class="error-content">
+                <span class="error-icon">⚠️</span>
+                <h2>Something went wrong</h2>
+                <p id="errorText" class="muted">Could not complete request.</p>
+                <button id="errorRetryButton" class="btn btn-primary">Try Again</button>
+            </div>
         </section>
 
     </main>
 
+    <!-- QR CODE & STICKER MODAL -->
+    <div id="qrModal" class="modal-backdrop" hidden>
+        <div class="modal-card">
+            <button class="modal-close" id="closeQrModalBtn">&times;</button>
+            <div class="modal-header">
+                <span class="eyebrow">PRINTABLE SMART TAG</span>
+                <h3 id="qrModalTitle">Item QR Code</h3>
+                <p class="muted" id="qrModalSubtitle">Tag ID #---</p>
+            </div>
+
+            <div class="qr-canvas-wrapper" id="qrCanvasWrapper">
+                <div id="qrCodeTarget" class="qr-code-box"></div>
+                <div class="qr-tag-label">
+                    <strong id="qrItemNameDisplay">Item</strong>
+                    <span id="qrTagIdDisplay">Tap N Found</span>
+                </div>
+            </div>
+
+            <div class="qr-link-box">
+                <input id="qrLinkInput" type="text" readonly>
+                <button class="btn btn-sm btn-outline" id="copyQrLinkBtn">Copy Link</button>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="downloadQrBtn">📥 Download Sticker PNG</button>
+                <button class="btn btn-outline" id="printQrBtn">🖨️ Print Tag</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
-    <footer>
-        Tap N Found · Help people reconnect with lost items
+    <footer class="footer">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <strong>Tap N Found</strong>
+                <span>Next-generation NFC & QR recovery platform</span>
+            </div>
+            <div class="footer-links">
+                <a href="/">Explore</a>
+                <a href="/login">Owner Login</a>
+                <a href="/admin">Admin Portal</a>
+                <span class="version-badge">v2.0 · Fast Serverless</span>
+            </div>
+        </div>
     </footer>
+
 </body>
 </html>
-```

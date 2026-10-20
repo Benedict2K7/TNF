@@ -1,29 +1,64 @@
-
 require("dotenv").config();
 
 const express = require("express");
 const mongoose = require("mongoose");
 const session = require("express-session");
-const MongoStore = require("connect-mongo").default;
+const MongoStoreModule = require("connect-mongo");
+const MongoStore = MongoStoreModule.default || MongoStoreModule;
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const path = require("path");
-
+const nodemailer = require("nodemailer");
+const QRCode = require("qrcode");
 
 const app = express();
 
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
-const SESSION_SECRET = process.env.SESSION_SECRET;
+const SESSION_SECRET = process.env.SESSION_SECRET || "tnf_secret_session_key_2024";
 const isProduction = process.env.NODE_ENV === "production";
+const ROOT_DIR = path.resolve(__dirname);
 
-if (!MONGODB_URI || !SESSION_SECRET) {
-    console.error("Missing MONGODB_URI or SESSION_SECRET.");
-    process.exit(1);
+if (!MONGODB_URI) {
+    console.warn("WARNING: MONGODB_URI is not set. Database operations will fail until configured.");
 }
 
+// ==================================================
+// DATABASE CONNECTION CACHE (Serverless-safe)
+// ==================================================
 
-const nodemailer = require("nodemailer");
+let cachedMongoosePromise = null;
+
+async function connectToDatabase() {
+    if (mongoose.connection.readyState === 1) {
+        return mongoose.connection;
+    }
+
+    if (!MONGODB_URI) {
+        throw new Error("MONGODB_URI is not configured in environment variables.");
+    }
+
+    if (!cachedMongoosePromise) {
+        mongoose.set("strictQuery", false);
+        cachedMongoosePromise = mongoose.connect(MONGODB_URI, {
+            serverSelectionTimeoutMS: 10000,
+            maxPoolSize: 10
+        }).then((m) => {
+            console.log("MongoDB connected successfully.");
+            return m;
+        }).catch((err) => {
+            cachedMongoosePromise = null;
+            console.error("MongoDB connection failed:", err.message);
+            throw err;
+        });
+    }
+
+    return cachedMongoosePromise;
+}
+
+// ==================================================
+// EMAIL CONFIGURATION
+// ==================================================
 
 const smtpConfigured = Boolean(
     process.env.SMTP_USER && process.env.SMTP_PASS
@@ -54,45 +89,32 @@ if (resendConfigured) {
 }
 
 async function sendNotification(to, subject, text) {
-    // Prefer Resend when its configuration is available.
     if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
-        const response = await fetch(
-            "https://api.resend.com/emails",
-            {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    from: process.env.EMAIL_FROM,
-                    to: [to],
-                    subject,
-                    text
-                })
-            }
-        );
+        const response = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                from: process.env.EMAIL_FROM,
+                to: [to],
+                subject,
+                text
+            })
+        });
 
         const result = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            console.error(
-                "Resend API error:",
-                response.status,
-                result
-            );
-
-            throw new Error(
-                result.message ||
-                "The email provider could not send the email."
-            );
+            console.error("Resend API error:", response.status, result);
+            throw new Error(result.message || "The email provider could not send the email.");
         }
 
         console.log("Email accepted by Resend:", result.id);
         return result;
     }
 
-    // Gmail SMTP fallback for local testing.
     if (transporter) {
         const result = await transporter.sendMail({
             from: process.env.SMTP_USER,
@@ -105,31 +127,50 @@ async function sendNotification(to, subject, text) {
         return result;
     }
 
-    throw new Error(
-        "Email is not configured. Set RESEND_API_KEY and EMAIL_FROM."
-    );
+    throw new Error("Email is not configured. Set RESEND_API_KEY or SMTP_USER/SMTP_PASS.");
 }
-
 
 // ==================================================
 // MIDDLEWARE
 // ==================================================
 
 app.disable("x-powered-by");
-
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "50kb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// Database connection assurance for incoming requests
+app.use(async (req, res, next) => {
+    // Skip db connection for static assets and health check
+    if (req.path.startsWith("/api/health") || req.path.includes(".")) {
+        return next();
+    }
+    try {
+        await connectToDatabase();
+        next();
+    } catch (err) {
+        console.error("DB connection error on route:", req.path, err.message);
+        return res.status(503).json({
+            error: "Database service unavailable. Please check configuration."
+        });
+    }
+});
+
+// Session configuration
+const sessionStore = MONGODB_URI
+    ? MongoStore.create({
+        mongoUrl: MONGODB_URI,
+        collectionName: "sessions",
+        ttl: 7 * 24 * 60 * 60,
+        autoRemove: "native"
+    })
+    : undefined;
 
 app.use(session({
     name: "tnf_owner_session",
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({
-        mongoUrl: MONGODB_URI,
-        collectionName: "sessions",
-        ttl: 7 * 24 * 60 * 60
-    }),
+    store: sessionStore,
     cookie: {
         httpOnly: true,
         secure: isProduction,
@@ -166,7 +207,7 @@ const ownerSchema = new mongoose.Schema({
     }
 });
 
-const Owner = mongoose.model("Owner", ownerSchema);
+const Owner = mongoose.models.Owner || mongoose.model("Owner", ownerSchema);
 
 const adminSchema = new mongoose.Schema({
     name: {
@@ -192,69 +233,36 @@ const adminSchema = new mongoose.Schema({
     }
 });
 
-const Admin = mongoose.model("Admin", adminSchema);
-
-
-async function ensureAdminAccount() {
-    const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-    const password = process.env.ADMIN_PASSWORD;
-    const name = process.env.ADMIN_NAME?.trim() || "Tap N Found Admin";
-
-    if (!email || !password) {
-        throw new Error(
-            "ADMIN_EMAIL and ADMIN_PASSWORD must be configured in .env"
-        );
-    }
-
-    const existingAdmin = await Admin.findOne({ email });
-
-    if (existingAdmin) {
-        console.log("Admin account already exists.");
-        return;
-    }
-
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    await Admin.create({
-        name,
-        email,
-        passwordHash
-    });
-
-    console.log("Initial admin account created successfully.");
-}
+const Admin = mongoose.models.Admin || mongoose.model("Admin", adminSchema);
 
 async function ensureAdminAccount() {
-    const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-    const password = process.env.ADMIN_PASSWORD;
-    const name = process.env.ADMIN_NAME?.trim() || "Tap N Found Admin";
+    try {
+        const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+        const password = process.env.ADMIN_PASSWORD;
+        const name = process.env.ADMIN_NAME?.trim() || "Tap N Found Admin";
 
-    if (!email || !password) {
-        throw new Error(
-            "ADMIN_EMAIL and ADMIN_PASSWORD must be set in .env"
-        );
+        if (!email || !password) {
+            // Admin variables not present, skip auto-creation safely
+            return;
+        }
+
+        const existingAdmin = await Admin.findOne({ email });
+        if (existingAdmin) {
+            return;
+        }
+
+        const passwordHash = await bcrypt.hash(password, 12);
+        await Admin.create({
+            name,
+            email,
+            passwordHash
+        });
+
+        console.log("Initial admin account created successfully.");
+    } catch (err) {
+        console.warn("Admin auto-creation skipped:", err.message);
     }
-
-    // Check whether this administrator already exists
-    const existingAdmin = await Admin.findOne({ email });
-
-    if (existingAdmin) {
-        console.log("Admin account already exists.");
-        return;
-    }
-
-    // Hash the password before saving it
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    await Admin.create({
-        name,
-        email,
-        passwordHash
-    });
-
-    console.log("Initial admin account created successfully.");
 }
-
 
 const nfcSchema = new mongoose.Schema({
     nfcId: {
@@ -279,6 +287,20 @@ const nfcSchema = new mongoose.Schema({
         lowercase: true,
         trim: true
     },
+    phone: {
+        type: String,
+        default: "",
+        trim: true
+    },
+    allowWhatsApp: {
+        type: Boolean,
+        default: false
+    },
+    itemCategory: {
+        type: String,
+        default: "general",
+        trim: true
+    },
     item: {
         type: String,
         required: true,
@@ -287,7 +309,7 @@ const nfcSchema = new mongoose.Schema({
     status: {
         type: String,
         default: "registered",
-        enum: ["registered", "disabled"]
+        enum: ["registered", "disabled", "lost", "found"]
     },
     createdAt: {
         type: Date,
@@ -295,7 +317,7 @@ const nfcSchema = new mongoose.Schema({
     }
 });
 
-const NFC = mongoose.model("NFC", nfcSchema);
+const NFC = mongoose.models.NFC || mongoose.model("NFC", nfcSchema);
 
 const chatSchema = new mongoose.Schema({
     nfcId: {
@@ -333,7 +355,7 @@ const chatSchema = new mongoose.Schema({
     }
 });
 
-const Chat = mongoose.model("Chat", chatSchema);
+const Chat = mongoose.models.Chat || mongoose.model("Chat", chatSchema);
 
 const messageSchema = new mongoose.Schema({
     chatId: {
@@ -359,22 +381,22 @@ const messageSchema = new mongoose.Schema({
     }
 });
 
-const Message = mongoose.model("Message", messageSchema);
+const Message = mongoose.models.Message || mongoose.model("Message", messageSchema);
 
 // ==================================================
 // HELPERS
 // ==================================================
 
 function validNfcId(id) {
-    return /^\d{3}$/.test(id);
+    return typeof id === "string" && /^[a-zA-Z0-9_-]{3,24}$/.test(id.trim());
 }
 
 function getOwnerId(req) {
-    return req.session.ownerId || null;
+    return req.session?.ownerId || null;
 }
 
 function getAdminId(req) {
-    return req.session.adminId || null;
+    return req.session?.adminId || null;
 }
 
 function requireOwner(req, res, next) {
@@ -405,7 +427,11 @@ function safeNfc(tag) {
         ownerName: tag.ownerName,
         item: tag.item,
         status: tag.status,
-        ownerAssigned: Boolean(tag.ownerId)
+        itemCategory: tag.itemCategory || "general",
+        phone: tag.allowWhatsApp && tag.phone ? tag.phone : "",
+        allowWhatsApp: Boolean(tag.allowWhatsApp && tag.phone),
+        ownerAssigned: Boolean(tag.ownerId),
+        createdAt: tag.createdAt
     };
 }
 
@@ -433,8 +459,17 @@ async function findOwnedTag(req, res) {
     return tag;
 }
 
+function getBaseUrl(req) {
+    if (process.env.APP_URL) {
+        return process.env.APP_URL.replace(/\/+$/, "");
+    }
+    const host = req.get("x-forwarded-host") || req.get("host");
+    const protocol = req.get("x-forwarded-proto") || req.protocol;
+    return `${protocol}://${host}`;
+}
+
 // ==================================================
-// OWNER REGISTRATION
+// OWNER AUTHENTICATION
 // ==================================================
 
 app.post("/api/auth/register", async (req, res) => {
@@ -472,10 +507,9 @@ app.post("/api/auth/register", async (req, res) => {
             passwordHash
         });
 
-        // Start a fresh session after account creation.
         req.session.regenerate((error) => {
             if (error) {
-                console.error("Session creation:", error.message);
+                console.error("Session creation error:", error.message);
                 return res.status(500).json({
                     error: "Account created, but login session could not start. Please log in."
                 });
@@ -486,7 +520,7 @@ app.post("/api/auth/register", async (req, res) => {
             req.session.save((saveError) => {
                 if (saveError) {
                     return res.status(500).json({
-                        error: "Account created, but login session could not be saved. Please log in."
+                        error: "Account created, but session could not be saved. Please log in."
                     });
                 }
 
@@ -494,38 +528,30 @@ app.post("/api/auth/register", async (req, res) => {
                     message: "Owner account created successfully.",
                     owner: {
                         id: owner._id,
-                        name: owner.name
+                        name: owner.name,
+                        email: owner.email
                     }
                 });
             });
         });
     } catch (error) {
         console.error("Owner registration:", error.message);
-
         if (error.code === 11000) {
             return res.status(409).json({
                 error: "An account with this email already exists."
             });
         }
-
         return res.status(500).json({
             error: "Could not create your account."
         });
     }
 });
 
-// ==================================================
-// OWNER LOGIN
-// ==================================================
-
 app.post("/api/auth/login", async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        if (
-            typeof email !== "string" ||
-            typeof password !== "string"
-        ) {
+        if (typeof email !== "string" || typeof password !== "string") {
             return res.status(400).json({
                 error: "Enter your email and password."
             });
@@ -535,10 +561,7 @@ app.post("/api/auth/login", async (req, res) => {
             email: email.trim().toLowerCase()
         });
 
-        if (
-            !owner ||
-            !(await bcrypt.compare(password, owner.passwordHash))
-        ) {
+        if (!owner || !(await bcrypt.compare(password, owner.passwordHash))) {
             return res.status(401).json({
                 error: "Incorrect email or password."
             });
@@ -564,7 +587,8 @@ app.post("/api/auth/login", async (req, res) => {
                     message: "Login successful.",
                     owner: {
                         id: owner._id,
-                        name: owner.name
+                        name: owner.name,
+                        email: owner.email
                     }
                 });
             });
@@ -576,10 +600,6 @@ app.post("/api/auth/login", async (req, res) => {
         });
     }
 });
-
-// ==================================================
-// CURRENT OWNER, LOGOUT AND OWNER TAGS
-// ==================================================
 
 app.get("/api/auth/me", async (req, res) => {
     try {
@@ -601,7 +621,8 @@ app.get("/api/auth/me", async (req, res) => {
             loggedIn: true,
             owner: {
                 id: owner._id,
-                name: owner.name
+                name: owner.name,
+                email: owner.email
             }
         });
     } catch (error) {
@@ -619,20 +640,21 @@ app.post("/api/auth/logout", (req, res) => {
                 error: "Logout failed."
             });
         }
-
         clearSessionCookie(res);
         return res.json({ message: "Logged out successfully." });
     });
 });
 
-// Used by login.js to find the owner's registered items.
+// ==================================================
+// OWNER ITEM MANAGEMENT
+// ==================================================
+
 app.get("/api/owner/tags", requireOwner, async (req, res) => {
     try {
         const tags = await NFC.find({
-            ownerId: getOwnerId(req),
-            status: "registered"
+            ownerId: getOwnerId(req)
         })
-            .select("nfcId ownerName item status createdAt")
+            .select("nfcId ownerName item status itemCategory phone allowWhatsApp createdAt")
             .sort({ createdAt: -1 })
             .lean();
 
@@ -645,23 +667,476 @@ app.get("/api/owner/tags", requireOwner, async (req, res) => {
     }
 });
 
+app.patch("/api/owner/tags/:id", requireOwner, async (req, res) => {
+    try {
+        const tag = await findOwnedTag(req, res);
+        if (!tag) return;
+
+        const { item, status, phone, allowWhatsApp, itemCategory } = req.body;
+
+        if (typeof item === "string" && item.trim()) {
+            tag.item = item.trim().slice(0, 100);
+        }
+
+        if (["registered", "lost", "found"].includes(status)) {
+            tag.status = status;
+        }
+
+        if (typeof phone === "string") {
+            tag.phone = phone.trim().slice(0, 25);
+        }
+
+        if (typeof allowWhatsApp === "boolean") {
+            tag.allowWhatsApp = allowWhatsApp;
+        }
+
+        if (typeof itemCategory === "string" && itemCategory.trim()) {
+            tag.itemCategory = itemCategory.trim().slice(0, 30);
+        }
+
+        await tag.save();
+
+        return res.json({
+            message: "Item updated successfully.",
+            nfc: safeNfc(tag)
+        });
+    } catch (error) {
+        console.error("Update owner tag:", error.message);
+        return res.status(500).json({
+            error: "Could not update item."
+        });
+    }
+});
+
 // ==================================================
-// SECURE ADMIN API
+// QR CODE GENERATION
+// ==================================================
+
+app.get("/api/nfc/:id/qr", async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!validNfcId(id)) {
+            return res.status(400).json({ error: "Invalid NFC ID format." });
+        }
+
+        const baseUrl = getBaseUrl(req);
+        const targetUrl = `${baseUrl}/${encodeURIComponent(id)}`;
+        const format = (req.query.format || "png").toLowerCase();
+
+        if (format === "json") {
+            const dataUrl = await QRCode.toDataURL(targetUrl, {
+                width: 360,
+                margin: 2,
+                color: {
+                    dark: "#0a192f",
+                    light: "#ffffff"
+                }
+            });
+            return res.json({
+                targetUrl,
+                dataUrl,
+                nfcId: id
+            });
+        }
+
+        if (format === "svg") {
+            const svg = await QRCode.toString(targetUrl, {
+                type: "svg",
+                margin: 2,
+                color: {
+                    dark: "#0a192f",
+                    light: "#ffffff"
+                }
+            });
+            res.type("image/svg+xml").send(svg);
+            return;
+        }
+
+        const buffer = await QRCode.toBuffer(targetUrl, {
+            width: 400,
+            margin: 2,
+            color: {
+                dark: "#0a192f",
+                light: "#ffffff"
+            }
+        });
+
+        res.type("image/png").send(buffer);
+    } catch (error) {
+        console.error("QR Code generation error:", error.message);
+        res.status(500).json({ error: "Could not generate QR code." });
+    }
+});
+
+// ==================================================
+// NFC TAG LOOKUP & REGISTRATION
+// ==================================================
+
+app.get("/api/nfc/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!validNfcId(id)) {
+            return res.status(400).json({
+                error: "Invalid NFC ID."
+            });
+        }
+
+        const tag = await NFC.findOne({ nfcId: id });
+
+        if (!tag || tag.status === "disabled") {
+            return res.json({
+                registered: false,
+                nfcId: id,
+                disabled: tag?.status === "disabled"
+            });
+        }
+
+        const isOwner =
+            Boolean(getOwnerId(req)) &&
+            tag.ownerId &&
+            tag.ownerId.toString() === getOwnerId(req);
+
+        return res.json({
+            registered: true,
+            role: isOwner ? "owner" : "finder",
+            nfc: safeNfc(tag)
+        });
+    } catch (error) {
+        console.error("NFC lookup:", error.message);
+        return res.status(500).json({
+            error: "Could not check this NFC tag."
+        });
+    }
+});
+
+app.post("/api/nfc/:id/register", requireOwner, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { item, phone, allowWhatsApp, itemCategory } = req.body;
+
+        if (!validNfcId(id)) {
+            return res.status(400).json({
+                error: "Use an NFC ID between 3 and 24 characters (letters, numbers, dashes)."
+            });
+        }
+
+        if (
+            typeof item !== "string" ||
+            !item.trim() ||
+            item.trim().length > 100
+        ) {
+            return res.status(400).json({
+                error: "Enter a valid item name (1-100 characters)."
+            });
+        }
+
+        if (await NFC.findOne({ nfcId: id })) {
+            return res.status(409).json({
+                error: "This NFC ID is already registered."
+            });
+        }
+
+        const owner = await Owner.findById(getOwnerId(req));
+
+        if (!owner) {
+            return res.status(401).json({
+                error: "Please log in again."
+            });
+        }
+
+        const tag = await NFC.create({
+            nfcId: id,
+            ownerId: owner._id,
+            ownerName: owner.name,
+            email: owner.email,
+            phone: typeof phone === "string" ? phone.trim().slice(0, 25) : "",
+            allowWhatsApp: Boolean(allowWhatsApp),
+            itemCategory: typeof itemCategory === "string" && itemCategory.trim() ? itemCategory.trim().slice(0, 30) : "general",
+            item: item.trim(),
+            status: "registered"
+        });
+
+        return res.status(201).json({
+            message: "NFC tag registered successfully.",
+            nfc: safeNfc(tag)
+        });
+    } catch (error) {
+        console.error("NFC registration:", error.message);
+
+        if (error.code === 11000) {
+            return res.status(409).json({
+                error: "This NFC ID is already registered."
+            });
+        }
+
+        return res.status(500).json({
+            error: "NFC registration failed."
+        });
+    }
+});
+
+// ==================================================
+// CONVERSATIONS & CHAT
+// ==================================================
+
+app.get("/api/nfc/:id/chats", requireOwner, async (req, res) => {
+    try {
+        const tag = await findOwnedTag(req, res);
+        if (!tag) return;
+
+        const chats = await Chat.find({ nfcId: req.params.id })
+            .select("nfcId finderName status createdAt lastMessageAt")
+            .sort({ lastMessageAt: -1 })
+            .lean();
+
+        return res.json({ chats });
+    } catch (error) {
+        console.error("Load chats:", error.message);
+        return res.status(500).json({
+            error: "Could not load conversations."
+        });
+    }
+});
+
+app.post("/api/nfc/:id/chats", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { finderName } = req.body;
+
+        if (!validNfcId(id)) {
+            return res.status(400).json({
+                error: "Invalid NFC ID."
+            });
+        }
+
+        if (
+            typeof finderName !== "string" ||
+            !finderName.trim() ||
+            finderName.trim().length > 50
+        ) {
+            return res.status(400).json({
+                error: "Enter a name or nickname of up to 50 characters."
+            });
+        }
+
+        const tag = await NFC.findOne({
+            nfcId: id,
+            status: { $in: ["registered", "lost"] }
+        });
+
+        if (!tag) {
+            return res.status(404).json({
+                error: "This tag is not registered or currently active."
+            });
+        }
+
+        if (!tag.ownerId) {
+            return res.status(409).json({
+                error: "This tag must be assigned to an owner before chat can be used."
+            });
+        }
+
+        if (getOwnerId(req) === tag.ownerId.toString()) {
+            return res.status(400).json({
+                error: "You are the owner. Open your owner chat dashboard."
+            });
+        }
+
+        const finderToken = crypto.randomBytes(32).toString("hex");
+
+        const chat = await Chat.create({
+            nfcId: id,
+            finderName: finderName.trim(),
+            finderTokenHash: hashToken(finderToken)
+        });
+
+        return res.status(201).json({
+            message: "Chat created.",
+            chat: {
+                id: chat._id,
+                nfcId: chat.nfcId,
+                finderName: chat.finderName,
+                status: chat.status
+            },
+            finderToken
+        });
+    } catch (error) {
+        console.error("Create chat:", error.message);
+        return res.status(500).json({
+            error: "Could not start a conversation."
+        });
+    }
+});
+
+async function authorizeChat(req, res, chatId) {
+    if (!mongoose.isValidObjectId(chatId)) {
+        res.status(400).json({ error: "Invalid chat ID." });
+        return null;
+    }
+
+    const chat = await Chat.findById(chatId).select("+finderTokenHash");
+
+    if (!chat) {
+        res.status(404).json({
+            error: "Conversation not found."
+        });
+        return null;
+    }
+
+    const tag = await NFC.findOne({ nfcId: chat.nfcId });
+
+    if (!tag || !tag.ownerId) {
+        res.status(404).json({
+            error: "Tag or owner not found."
+        });
+        return null;
+    }
+
+    if (getOwnerId(req) === tag.ownerId.toString()) {
+        return { chat, sender: "owner", tag };
+    }
+
+    const token = req.get("x-finder-token");
+
+    if (
+        typeof token === "string" &&
+        /^[a-f0-9]{64}$/.test(token) &&
+        hashToken(token) === chat.finderTokenHash
+    ) {
+        return { chat, sender: "finder", tag };
+    }
+
+    res.status(403).json({
+        error: "You are not authorized to access this conversation."
+    });
+
+    return null;
+}
+
+app.get("/api/chats/:chatId/messages", async (req, res) => {
+    try {
+        const access = await authorizeChat(req, res, req.params.chatId);
+        if (!access) return;
+
+        const messages = await Message.find({ chatId: access.chat._id })
+            .select("sender text createdAt")
+            .sort({ createdAt: 1 })
+            .lean();
+
+        return res.json({
+            messages,
+            chatStatus: access.chat.status
+        });
+    } catch (error) {
+        console.error("Load messages:", error.message);
+        return res.status(500).json({
+            error: "Could not load messages."
+        });
+    }
+});
+
+app.post("/api/chats/:chatId/messages", async (req, res) => {
+    try {
+        const access = await authorizeChat(req, res, req.params.chatId);
+        if (!access) return;
+
+        if (access.chat.status !== "active") {
+            return res.status(403).json({
+                error: "This conversation is closed."
+            });
+        }
+
+        const { text: messageText } = req.body;
+
+        if (
+            typeof messageText !== "string" ||
+            !messageText.trim() ||
+            messageText.trim().length > 1000
+        ) {
+            return res.status(400).json({
+                error: "Messages must contain 1–1000 characters."
+            });
+        }
+
+        const message = await Message.create({
+            chatId: access.chat._id,
+            sender: access.sender,
+            text: messageText.trim()
+        });
+
+        access.chat.lastMessageAt = new Date();
+        await access.chat.save();
+
+        // Notify the owner when the finder starts or replies
+        if (access.sender === "finder") {
+            try {
+                const tag = access.tag || await NFC.findOne({ nfcId: access.chat.nfcId });
+                if (tag && tag.email) {
+                    const claim = await Chat.updateOne(
+                        {
+                            _id: access.chat._id,
+                            foundEmailSentAt: null
+                        },
+                        {
+                            $set: {
+                                foundEmailSentAt: new Date()
+                            }
+                        }
+                    );
+
+                    if (claim.modifiedCount === 1) {
+                        const baseUrl = getBaseUrl(req);
+                        sendNotification(
+                            tag.email,
+                            `[Tap N Found] Someone found your ${tag.item}!`,
+                            `Hello ${tag.ownerName},
+
+A finder named "${access.chat.finderName}" just sent you a message about your registered item (${tag.item}) on Tap N Found!
+
+Message:
+"${messageText.trim()}"
+
+Log in to reply securely:
+${baseUrl}/
+
+Best regards,
+The Tap N Found Team`
+                        ).catch((err) => {
+                            console.error("Email notification delivery error:", err.message);
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error("Notification process error:", err.message);
+            }
+        }
+
+        return res.status(201).json({
+            message: {
+                id: message._id,
+                sender: message.sender,
+                text: message.text,
+                createdAt: message.createdAt
+            }
+        });
+    } catch (error) {
+        console.error("Send message:", error.message);
+        return res.status(500).json({
+            error: "Could not send message."
+        });
+    }
+});
+
+// ==================================================
+// ADMIN CONSOLE APIS
 // ==================================================
 
 app.post("/api/admin/login", async (req, res) => {
-
-
-     console.log("ADMIN LOGIN ROUTE REACHED");
-
     try {
         const { email, password } = req.body;
 
-
-        if (
-            typeof email !== "string" ||
-            typeof password !== "string"
-        ) {
+        if (typeof email !== "string" || typeof password !== "string") {
             return res.status(400).json({
                 error: "Enter admin email and password."
             });
@@ -671,20 +1146,7 @@ app.post("/api/admin/login", async (req, res) => {
             email: email.trim().toLowerCase()
         });
 
-
-// DEBUG: Check whether the admin account exists
-console.log("Admin account found:", Boolean(admin));
-
-console.log(
-    "Password hash looks valid:",
-    Boolean(admin?.passwordHash?.startsWith("$2"))
-);
-
-
-        if (
-            !admin ||
-            !(await bcrypt.compare(password, admin.passwordHash))
-        ) {
+        if (!admin || !(await bcrypt.compare(password, admin.passwordHash))) {
             return res.status(401).json({
                 error: "Incorrect admin email or password."
             });
@@ -756,7 +1218,6 @@ app.post("/api/admin/logout", (req, res) => {
                 error: "Admin logout failed."
             });
         }
-
         clearSessionCookie(res);
         return res.json({ message: "Admin logged out." });
     });
@@ -813,7 +1274,7 @@ app.get("/api/admin/tags", requireAdmin, async (req, res) => {
         } : {};
 
         const tags = await NFC.find(filter)
-            .select("nfcId ownerName email item status ownerId createdAt")
+            .select("nfcId ownerName email item status ownerId createdAt phone allowWhatsApp")
             .sort({ createdAt: -1 })
             .limit(200)
             .lean();
@@ -886,7 +1347,7 @@ app.get("/api/admin/owners", requireAdmin, async (req, res) => {
     } catch (error) {
         console.error("Admin owners:", error.message);
         return res.status(500).json({
-            error: "Could not load owners."
+            error: "Could not load owner accounts."
         });
     }
 });
@@ -909,475 +1370,49 @@ app.get("/api/admin/chats", requireAdmin, async (req, res) => {
 });
 
 // ==================================================
-// NFC REGISTRATION
-// ==================================================
-
-app.post("/api/nfc/:id/register", requireOwner, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { item } = req.body;
-
-        if (!validNfcId(id)) {
-            return res.status(400).json({
-                error: "Use a three-digit NFC ID such as 001."
-            });
-        }
-
-        if (
-            typeof item !== "string" ||
-            !item.trim() ||
-            item.trim().length > 100
-        ) {
-            return res.status(400).json({
-                error: "Enter a valid item name."
-            });
-        }
-
-        if (await NFC.findOne({ nfcId: id })) {
-            return res.status(409).json({
-                error: "This NFC ID is already registered."
-            });
-        }
-
-        const owner = await Owner.findById(getOwnerId(req));
-
-        if (!owner) {
-            return res.status(401).json({
-                error: "Please log in again."
-            });
-        }
-
-        const tag = await NFC.create({
-            nfcId: id,
-            ownerId: owner._id,
-            ownerName: owner.name,
-            email: owner.email,
-            item: item.trim(),
-            status: "registered"
-        });
-
-        return res.status(201).json({
-            message: "NFC tag registered successfully.",
-            nfc: safeNfc(tag)
-        });
-    } catch (error) {
-        console.error("NFC registration:", error.message);
-
-        if (error.code === 11000) {
-            return res.status(409).json({
-                error: "This NFC ID is already registered."
-            });
-        }
-
-        return res.status(500).json({
-            error: "NFC registration failed."
-        });
-    }
-});
-
-// ==================================================
-// PUBLIC NFC LOOKUP
-// ==================================================
-
-app.get("/api/nfc/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        if (!validNfcId(id)) {
-            return res.status(400).json({
-                error: "Invalid NFC ID."
-            });
-        }
-
-        const tag = await NFC.findOne({ nfcId: id });
-
-        if (!tag || tag.status !== "registered") {
-            return res.json({
-                registered: false,
-                nfcId: id
-            });
-        }
-
-        const isOwner =
-            Boolean(getOwnerId(req)) &&
-            tag.ownerId &&
-            tag.ownerId.toString() === getOwnerId(req);
-
-        return res.json({
-            registered: true,
-            role: isOwner ? "owner" : "finder",
-            nfc: safeNfc(tag)
-        });
-    } catch (error) {
-        console.error("NFC lookup:", error.message);
-        return res.status(500).json({
-            error: "Could not check this NFC tag."
-        });
-    }
-});
-
-// ==================================================
-// OWNER: LIST CONVERSATIONS FOR AN NFC TAG
-// ==================================================
-
-app.get("/api/nfc/:id/chats", requireOwner, async (req, res) => {
-    try {
-        const tag = await findOwnedTag(req, res);
-        if (!tag) return;
-
-        const chats = await Chat.find({ nfcId: tag.nfcId })
-            .select("-finderTokenHash")
-            .sort({ lastMessageAt: -1 })
-            .lean();
-
-        return res.json({ chats });
-    } catch (error) {
-        console.error("List chats:", error.message);
-        return res.status(500).json({
-            error: "Could not load conversations."
-        });
-    }
-});
-
-// ==================================================
-// FINDER: CREATE A PRIVATE CONVERSATION
-// ==================================================
-
-app.post("/api/nfc/:id/chats", async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { finderName } = req.body;
-
-        if (!validNfcId(id)) {
-            return res.status(400).json({
-                error: "Invalid NFC ID."
-            });
-        }
-
-        if (
-            typeof finderName !== "string" ||
-            !finderName.trim() ||
-            finderName.trim().length > 50
-        ) {
-            return res.status(400).json({
-                error: "Enter a nickname of up to 50 characters."
-            });
-        }
-
-        const tag = await NFC.findOne({
-            nfcId: id,
-            status: "registered"
-        });
-
-        if (!tag) {
-            return res.status(404).json({
-                error: "This tag is not registered."
-            });
-        }
-
-        if (!tag.ownerId) {
-            return res.status(409).json({
-                error: "This tag must be assigned to an owner before chat can be used."
-            });
-        }
-
-        if (getOwnerId(req) === tag.ownerId.toString()) {
-            return res.status(400).json({
-                error: "You are the owner. Open your owner chat dashboard."
-            });
-        }
-
-        const finderToken = crypto.randomBytes(32).toString("hex");
-
-        const chat = await Chat.create({
-            nfcId: id,
-            finderName: finderName.trim(),
-            finderTokenHash: hashToken(finderToken)
-        });
-
-        // The finder token is shown only to the finder at creation.
-        return res.status(201).json({
-            message: "Chat created.",
-            chat: {
-                id: chat._id,
-                nfcId: chat.nfcId,
-                finderName: chat.finderName,
-                status: chat.status
-            },
-            finderToken
-        });
-    } catch (error) {
-        console.error("Create chat:", error.message);
-        return res.status(500).json({
-            error: "Could not start a conversation."
-        });
-    }
-});
-
-// ==================================================
-// SHARED CHAT AUTHORIZATION
-// ==================================================
-
-async function authorizeChat(req, res, chatId) {
-    if (!mongoose.isValidObjectId(chatId)) {
-        res.status(400).json({ error: "Invalid chat ID." });
-        return null;
-    }
-
-    const chat = await Chat.findById(chatId)
-        .select("+finderTokenHash");
-
-    if (!chat) {
-        res.status(404).json({
-            error: "Conversation not found."
-        });
-        return null;
-    }
-
-    const tag = await NFC.findOne({ nfcId: chat.nfcId });
-
-    if (!tag || !tag.ownerId) {
-        res.status(404).json({
-            error: "Tag or owner not found."
-        });
-        return null;
-    }
-
-    if (getOwnerId(req) === tag.ownerId.toString()) {
-        return { chat, sender: "owner" };
-    }
-
-    const token = req.get("x-finder-token");
-
-    if (
-        typeof token === "string" &&
-        /^[a-f0-9]{64}$/.test(token) &&
-        hashToken(token) === chat.finderTokenHash
-    ) {
-        return { chat, sender: "finder" };
-    }
-
-    res.status(403).json({
-        error: "You are not authorized to access this conversation."
-    });
-
-    return null;
-}
-
-// ==================================================
-// LOAD CHAT MESSAGES
-// ==================================================
-
-app.get("/api/chats/:chatId/messages", async (req, res) => {
-    try {
-        const access = await authorizeChat(
-            req,
-            res,
-            req.params.chatId
-        );
-
-        if (!access) return;
-
-        const messages = await Message.find({
-            chatId: access.chat._id
-        })
-            .sort({ createdAt: 1 })
-            .limit(200)
-            .select("sender text createdAt")
-            .lean();
-
-        return res.json({
-            chatId: access.chat._id,
-            role: access.sender,
-            status: access.chat.status,
-            messages
-        });
-    } catch (error) {
-        console.error("Load messages:", error.message);
-        return res.status(500).json({
-            error: "Could not load messages."
-        });
-    }
-});
-
-// ==================================================
-// SEND MESSAGE + EMAIL NOTIFICATION
-// ==================================================
-
-app.post("/api/chats/:chatId/messages", async (req, res) => {
-    try {
-        const access = await authorizeChat(
-            req,
-            res,
-            req.params.chatId
-        );
-
-        if (!access) return;
-
-        if (access.chat.status !== "active") {
-            return res.status(403).json({
-                error: "This conversation is closed."
-            });
-        }
-
-        const { text: messageText } = req.body;
-
-        if (
-            typeof messageText !== "string" ||
-            !messageText.trim() ||
-            messageText.trim().length > 1000
-        ) {
-            return res.status(400).json({
-                error: "Messages must contain 1–1000 characters."
-            });
-        }
-
-        const message = await Message.create({
-            chatId: access.chat._id,
-            sender: access.sender,
-            text: messageText.trim()
-        });
-
-        access.chat.lastMessageAt = new Date();
-        await access.chat.save();
-
-        
-        // Notify the owner when the finder starts a conversation.
-        if (access.sender === "finder") {
-            try {
-                const tag = await NFC.findOne({
-                    nfcId: access.chat.nfcId,
-                    ownerId: { $ne: null }
-                });
-
-                if (tag && tag.email) {
-                    // Prevent duplicate notifications for this chat.
-                    const claim = await Chat.updateOne(
-                        {
-                            _id: access.chat._id,
-                            foundEmailSentAt: null
-                        },
-                        {
-                            $set: {
-                                foundEmailSentAt: new Date()
-                            }
-                        }
-                    );
-
-                    if (claim.modifiedCount === 1) {
-                        try {
-                            await sendNotification(
-                                tag.email,
-                                "Your item was found!",
-                                `Hello ${tag.ownerName},
-
-Someone has started a conversation about your registered item on Tap N Found.
-
-Item: ${tag.item}
-Finder name: ${access.chat.finderName}
-
-Please log in to Tap N Found and open your item's chat dashboard to view the message and reply.
-
-Login to Tap N Found:
-https://tnf-cqsa.onrender.com/
-
-Thank you,
-Tap N Found Team`
-                            );
-
-                            console.log(
-                                `Owner notification sent for NFC ${tag.nfcId}`
-                            );
-                        } catch (emailError) {
-                            // Allow a later attempt if sending fails.
-                            await Chat.updateOne(
-                                {
-                                    _id: access.chat._id,
-                                    foundEmailSentAt: { $ne: null }
-                                },
-                                {
-                                    $set: {
-                                        foundEmailSentAt: null
-                                    }
-                                }
-                            );
-
-                            console.error(
-                                "Email sending failed:",
-                                emailError.message
-                            );
-                        }
-                    }
-                }
-            } catch (emailError) {
-                // Email failure should not prevent chat messages.
-                console.error(
-                    "Owner email notification error:",
-                    emailError.message
-                );
-            }
-        }
-
-
-        return res.status(201).json({
-            message: {
-                id: message._id,
-                sender: message.sender,
-                text: message.text,
-                createdAt: message.createdAt
-            }
-        });
-    } catch (error) {
-        console.error("Send message:", error.message);
-        return res.status(500).json({
-            error: "Could not send message."
-        });
-    }
-});
-
-// ==================================================
 // HEALTH CHECK
 // ==================================================
 
 app.get("/api/health", (req, res) => {
     res.json({
         status: "ok",
-        message: "Tap N Found server is running."
+        service: "Tap N Found API",
+        time: new Date().toISOString(),
+        database: mongoose.connection.readyState === 1 ? "connected" : "connecting",
+        email: emailConfigured ? "configured" : "not configured"
     });
 });
 
 // ==================================================
-// PAGE ROUTES
+// STATIC ASSETS & FRONTEND ROUTES
 // ==================================================
 
-// Serve assets without automatically serving index.html at "/".
-app.use(express.static(__dirname, { index: false }));
+app.use(express.static(ROOT_DIR, { index: false }));
 
-// Main website opens the login page directly.
 app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "login.html"));
+    res.sendFile(path.join(ROOT_DIR, "index.html"));
 });
 
-// Keep the existing owner/finder interface available.
 app.get("/home", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
+    res.sendFile(path.join(ROOT_DIR, "index.html"));
 });
 
-// Keep the admin page.
+app.get("/login", (req, res) => {
+    res.sendFile(path.join(ROOT_DIR, "login.html"));
+});
+
 app.get("/admin", (req, res) => {
-    res.sendFile(path.join(__dirname, "admin.html"));
+    res.sendFile(path.join(ROOT_DIR, "admin.html"));
 });
 
-// Three-digit NFC IDs open the existing NFC interface.
+// Specific Tag ID routing (e.g., /101, /keys-1)
 app.get("/:id", (req, res, next) => {
     if (!validNfcId(req.params.id)) {
         return next();
     }
-
-    return res.sendFile(path.join(__dirname, "index.html"));
+    return res.sendFile(path.join(ROOT_DIR, "index.html"));
 });
 
-// Unknown pages and endpoints.
 app.use((req, res) => {
     res.status(404).json({
         error: "Page or API endpoint not found."
@@ -1385,31 +1420,26 @@ app.use((req, res) => {
 });
 
 // ==================================================
-// START SERVER
+// SERVER INITIALIZATION
 // ==================================================
 
 async function startServer() {
-    await mongoose.connect(MONGODB_URI);
+    try {
+        await connectToDatabase();
+        await ensureAdminAccount();
 
-    console.log("MongoDB connected successfully.");
-
-    // Create the administrator if the account is missing.
-    await ensureAdminAccount();
-
-    if (!emailConfigured) {
-        console.warn(
-            "Email notifications are not configured."
-        );
+        app.listen(PORT, () => {
+            console.log(`Tap N Found running on http://localhost:${PORT}`);
+        });
+    } catch (error) {
+        console.error("Server startup error:", error.message);
     }
-
-    app.listen(PORT, () => {
-        console.log(
-            `Tap N Found server running on port ${PORT}`
-        );
-    });
 }
 
-startServer().catch((error) => {
-    console.error("Server startup failed:", error.message);
-    process.exit(1);
-});
+// Export for Vercel serverless runtime
+module.exports = app;
+
+// Run standalone server when executed directly with node
+if (require.main === module && !process.env.VERCEL) {
+    startServer();
+}

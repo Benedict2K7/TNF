@@ -20,6 +20,7 @@
     "mongodb": "^7.7.0",
     "mongoose": "^9.11.1",
     "nodemailer": "^10.1.0",
+    "qrcode": "^1.5.4",
     "resend": "^6.32.1"
   }
 }

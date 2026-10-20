@@ -1,4 +1,3 @@
-
 * {
     box-sizing: border-box;
 }
@@ -10,86 +9,111 @@ body {
     justify-content: center;
     align-items: center;
     padding: 24px;
-    font-family: Arial, sans-serif;
-    background: linear-gradient(135deg, #061b35, #2864ee);
-    color: #172033;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #0b1329, #1b2d52);
+    color: #0f172a;
 }
 
 .login-card {
     width: 100%;
-    max-width: 420px;
-    padding: 36px;
-    border-radius: 20px;
+    max-width: 440px;
+    padding: 40px;
+    border-radius: 24px;
     background: #ffffff;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.brand-link {
+    text-decoration: none;
+    display: inline-block;
 }
 
 .logo {
     display: grid;
     place-items: center;
-    width: 60px;
-    height: 60px;
-    margin-bottom: 18px;
-    border-radius: 16px;
-    background: #2864ee;
+    width: 54px;
+    height: 54px;
+    margin-bottom: 20px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     color: white;
-    font-size: 23px;
-    font-weight: bold;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
 }
 
 .eyebrow {
-    color: #2864ee;
-    font-size: 12px;
-    font-weight: bold;
-    letter-spacing: 2px;
+    color: #2563eb;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
 }
 
 h1 {
-    margin: 8px 0;
-    font-size: 30px;
+    margin: 4px 0 8px;
+    font-size: 28px;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.5px;
 }
 
 .subtitle {
     margin-bottom: 28px;
-    color: #657086;
-    line-height: 1.6;
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.form-group {
+    margin-bottom: 18px;
 }
 
 label {
     display: block;
-    margin: 16px 0 7px;
+    margin-bottom: 7px;
     font-size: 14px;
-    font-weight: bold;
+    font-weight: 700;
+    color: #334155;
 }
 
 input {
     width: 100%;
-    padding: 13px;
-    border: 1px solid #d5dce8;
-    border-radius: 9px;
+    padding: 12px 14px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 12px;
     font-size: 15px;
+    font-family: inherit;
+    transition: all 0.15s ease;
 }
 
 input:focus {
-    outline: 2px solid #2864ee;
-    border-color: transparent;
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 button {
     width: 100%;
-    margin-top: 24px;
-    padding: 14px;
+    margin-top: 10px;
+    padding: 13px;
     border: 0;
-    border-radius: 9px;
-    background: #2864ee;
+    border-radius: 12px;
+    background: #2563eb;
     color: white;
-    font-size: 16px;
-    font-weight: bold;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
     cursor: pointer;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+    transition: all 0.15s ease;
 }
 
 button:hover {
-    background: #174ed0;
+    background: #1d4ed8;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
 }
 
 button:disabled {
@@ -98,20 +122,27 @@ button:disabled {
 }
 
 #message {
-    min-height: 20px;
-    color: #b42318;
+    margin-top: 16px;
     font-size: 14px;
-    line-height: 1.5;
+    font-weight: 600;
+    text-align: center;
 }
 
 .register-link {
-    margin-top: 22px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #f1f5f9;
     text-align: center;
-    color: #657086;
     font-size: 13px;
-    line-height: 1.7;
+    color: #64748b;
 }
 
-a {
-    color: #2864ee;
+.register-link a {
+    color: #2563eb;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.register-link a:hover {
+    text-decoration: underline;
 }
