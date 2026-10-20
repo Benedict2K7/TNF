@@ -1387,7 +1387,32 @@ app.get("/api/health", (req, res) => {
 // STATIC ASSETS & FRONTEND ROUTES
 // ==================================================
 
+app.use(express.static(path.join(ROOT_DIR, "public")));
 app.use(express.static(ROOT_DIR, { index: false }));
+
+app.get("/style.css", (req, res) => {
+    res.type("text/css").sendFile(path.join(ROOT_DIR, "public", "style.css"));
+});
+
+app.get("/script.js", (req, res) => {
+    res.type("application/javascript").sendFile(path.join(ROOT_DIR, "public", "script.js"));
+});
+
+app.get("/login.css", (req, res) => {
+    res.type("text/css").sendFile(path.join(ROOT_DIR, "public", "login.css"));
+});
+
+app.get("/login.js", (req, res) => {
+    res.type("application/javascript").sendFile(path.join(ROOT_DIR, "public", "login.js"));
+});
+
+app.get("/admin.css", (req, res) => {
+    res.type("text/css").sendFile(path.join(ROOT_DIR, "public", "admin.css"));
+});
+
+app.get("/admin.js", (req, res) => {
+    res.type("application/javascript").sendFile(path.join(ROOT_DIR, "public", "admin.js"));
+});
 
 app.get("/", (req, res) => {
     res.sendFile(path.join(ROOT_DIR, "index.html"));

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tap N Found | Admin</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <div class="login-shell" id="loginShell">
+    <form class="login-card" id="adminLoginForm">
+      <div class="brand-mark">TNF</div>
+      <p class="eyebrow">TAP N FOUND</p>
+      <h1>Admin portal</h1>
+      <p class="muted">Sign in with your private administrator account.</p>
+      <label for="adminEmail">Admin email</label>
+      <input id="adminEmail" name="email" type="email" autocomplete="username" required>
+      <label for="adminPassword">Password</label>
+      <input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
+      <button class="primary full" type="submit">Sign in securely</button>
+      <p class="notice" id="loginError" role="alert"></p>
+    </form>
+  </div>
+
+  <div class="app-shell hidden" id="appShell">
+    <aside class="sidebar">
+      <a class="brand" href="/admin"><span class="brand-mark small">TNF</span><span>Tap N Found<small>ADMIN CONSOLE</small></span></a>
+      <nav id="navigation">
+        <button class="nav-link active" data-view="overview">▦ <span>Overview</span></button>
+        <button class="nav-link" data-view="tags">◉ <span>NFC tags</span></button>
+        <button class="nav-link" data-view="owners">♙ <span>Owners</span></button>
+        <button class="nav-link" data-view="chats">☷ <span>Conversations</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="admin-identity"><span class="avatar">A</span><span><b id="adminName">Admin</b><small>Administrator</small></span></div>
+        <button class="logout" id="logoutButton">Log out ↗</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div><p class="eyebrow">CONTROL CENTER</p><h1 id="pageTitle">Overview</h1></div>
+        <div class="top-actions"><span class="secure-label">● Secure session</span><button class="secondary" id="refreshButton">↻ Refresh</button></div>
+      </header>
+      <p class="notice global-notice" id="globalNotice" role="status"></p>
+
+      <section class="view" id="view-overview">
+        <div class="welcome-panel"><div><p class="eyebrow">TAP N FOUND OPERATIONS</p><h2>Your service at a glance.</h2><p>Monitor NFC tags, owner accounts and finder conversations.</p></div><div class="welcome-symbol">TNF<span>+</span></div></div>
+        <div class="stats-grid">
+          <article class="stat-card"><span class="stat-icon blue">◉</span><p>Total NFC tags</p><strong id="statTags">—</strong><small>Registered in the database</small></article>
+          <article class="stat-card"><span class="stat-icon violet">♙</span><p>Owner accounts</p><strong id="statOwners">—</strong><small>Registered owners</small></article>
+          <article class="stat-card"><span class="stat-icon green">☷</span><p>Conversations</p><strong id="statChats">—</strong><small><span id="statActive">—</span> active</small></article>
+          <article class="stat-card"><span class="stat-icon orange">✉</span><p>Messages</p><strong id="statMessages">—</strong><small><span id="statDisabled">—</span> disabled tags</small></article>
+        </div>
+        <div class="content-card"><div class="card-heading"><div><h2>Recent NFC tags</h2><p>Latest tag registrations</p></div><button class="text-button" data-goto="tags">View all tags →</button></div><div id="recentTags" class="table-wrap"></div></div>
+        <p class="privacy-note">Privacy note: this dashboard displays conversation metadata only, not private message contents.</p>
+      </section>
+
+      <section class="view hidden" id="view-tags">
+        <div class="content-card"><div class="card-heading"><div><h2>NFC tag management</h2><p>Search tags and disable or reactivate access.</p></div></div><div class="toolbar"><input id="tagSearch" placeholder="Search ID, owner or item…" type="search"><button class="secondary" id="tagSearchButton">Search</button></div><div id="tagsTable" class="table-wrap"></div></div>
+      </section>
+
+      <section class="view hidden" id="view-owners">
+        <div class="content-card"><div class="card-heading"><div><h2>Owner accounts</h2><p>Account directory. Passwords are never displayed.</p></div></div><div class="toolbar"><input id="ownerSearch" placeholder="Search name or email…" type="search"><button class="secondary" id="ownerSearchButton">Search</button></div><div id="ownersTable" class="table-wrap"></div></div>
+      </section>
+
+      <section class="view hidden" id="view-chats">
+        <div class="content-card"><div class="card-heading"><div><h2>Conversations</h2><p>Metadata only; private messages are not exposed here.</p></div></div><div id="chatsTable" class="table-wrap"></div></div>
+      </section>
+      <footer>Tap N Found · Admin console <span>Protect your admin credentials.</span></footer>
+    </main>
+  </div>
+  <script src="/admin.js"></script>
+</body>
+</html>

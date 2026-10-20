@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Owner Login | Tap N Found</title>
+    <link rel="stylesheet" href="/login.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="/login.js" defer></script>
+</head>
+<body>
+    <main class="login-card">
+        <a href="/" class="brand-link" title="Back to home">
+            <div class="logo">TNF</div>
+        </a>
+        <p class="eyebrow">TAP N FOUND</p>
+        <h1>Welcome back</h1>
+        <p class="subtitle">Log in to view your items, generate QR stickers, and chat with finders.</p>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="email">Email address</label>
+                <input
+                    id="email"
+                    type="email"
+                    autocomplete="username"
+                    maxlength="254"
+                    placeholder="you@example.com"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input
+                    id="password"
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                >
+            </div>
+
+            <button id="loginButton" type="submit">Log in</button>
+        </form>
+
+        <p id="message" role="status" aria-live="polite"></p>
+
+        <p class="register-link">
+            New to Tap N Found?
+            <a href="/">Create an account or register a tag</a>
+        </p>
+    </main>
+</body>
+</html>
