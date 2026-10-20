@@ -1414,6 +1414,14 @@ app.get("/admin.js", (req, res) => {
     res.type("application/javascript").sendFile(path.join(ROOT_DIR, "public", "admin.js"));
 });
 
+app.get("/favicon.svg", (req, res) => {
+    res.type("image/svg+xml").sendFile(path.join(ROOT_DIR, "public", "favicon.svg"));
+});
+
+app.get("/favicon.ico", (req, res) => {
+    res.type("image/svg+xml").sendFile(path.join(ROOT_DIR, "public", "favicon.svg"));
+});
+
 app.get("/", (req, res) => {
     res.sendFile(path.join(ROOT_DIR, "index.html"));
 });
